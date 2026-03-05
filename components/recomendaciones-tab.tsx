@@ -1,0 +1,428 @@
+"use client"
+
+import React, { useState, useRef } from "react"
+import { Button }      from "@/components/ui/button"
+import { Badge }       from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Progress } from "@/components/ui/progress"
+
+// ── Patrones ──────────────────────────────────────────────────
+import {
+  CONDICION_TAGS, ESFUERZO_LABELS, ESTRATEGIA_META, FlyweightCache,
+  type CondicionTag,
+} from "@/lib/patterns/flyweight"
+import { crearEstrategia, todasLasEstrategias } from "@/lib/patterns/strategy"
+import { RecomendacionResultadoBuilder, type RecomendacionResultado } from "@/lib/patterns/builder"
+import { ScanObserver, useScanObserver } from "@/lib/patterns/observer"
+
+interface Producto {
+  id: string
+  nombre: string
+  categoria: string | null
+}
+
+interface RecomendacionesTabProps {
+  productos: Producto[]
+}
+
+// Simula el delay de procesamiento para mostrar el Observer en acción
+async function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
+
+// ── Colores tailwind por estrategia ───────────────────────────
+const COLORES: Record<string, { border: string; bg: string; text: string; badge: string }> = {
+  reutilizar:   { border: "border-emerald-500/30", bg: "bg-emerald-500/10", text: "text-emerald-400", badge: "bg-emerald-500/20 text-emerald-300" },
+  transformar:  { border: "border-yellow-500/30",  bg: "bg-yellow-500/10",  text: "text-yellow-400",  badge: "bg-yellow-500/20 text-yellow-300"  },
+  reconfigurar: { border: "border-pink-500/30",    bg: "bg-pink-500/10",    text: "text-pink-400",    badge: "bg-pink-500/20 text-pink-300"    },
+}
+
+export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
+  // ── FLYWEIGHT: datos compartidos cacheados ─────────────────
+  const condiciones  = CONDICION_TAGS                        // estático, misma referencia siempre
+  const estrategias  = todasLasEstrategias()                 // instancias únicas reutilizadas
+  const esfuerzos    = ESFUERZO_LABELS                       // estático, misma referencia siempre
+
+  const [productoId,  setProductoId]  = useState("")
+  const [condicion,   setCondicion]   = useState<CondicionTag>("bueno")
+  const [estratKey,   setEstratKey]   = useState("reutilizar")
+  const [imagen,      setImagen]      = useState<{ preview: string; nombre: string } | null>(null)
+  const [loading,     setLoading]     = useState(false)
+  const [progreso,    setProgreso]    = useState(0)
+  const [progresoMsg, setProgresoMsg] = useState("")
+  const [resultado,   setResultado]   = useState<RecomendacionResultado | null>(null)
+  const [historial,   setHistorial]   = useState<RecomendacionResultado[]>([])
+  const [error,       setError]       = useState("")
+  const [feedback,    setFeedback]    = useState<Record<string, number>>({})
+  const [vista,       setVista]       = useState<"formulario" | "resultado">("formulario")
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  // ── OBSERVER: suscriptor de progreso ──────────────────────
+  useScanObserver<{ pct: number; msg: string }>("escaneo:progreso", ({ pct, msg }) => {
+    setProgreso(pct)
+    setProgresoMsg(msg)
+  })
+  useScanObserver<RecomendacionResultado>("escaneo:completo", (r) => {
+    setHistorial(prev => [r, ...prev])
+  })
+
+  const handleImagen = (file: File | null) => {
+    if (!file || !file.type.startsWith("image/")) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setImagen({ preview: e.target?.result as string, nombre: file.name })
+      setError("")
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const analizar = async () => {
+    if (!imagen)     { setError("Adjunta una imagen del producto"); return }
+    if (!productoId) { setError("Selecciona un producto"); return }
+    setError(""); setLoading(true); setProgreso(0)
+
+    const producto = productos.find(p => p.id === productoId)!
+
+    try {
+      // OBSERVER: notificar inicio parcial (25%)
+      ScanObserver.emit("escaneo:progreso", { pct: 25, msg: "Analizando imagen..." })
+      await sleep(400)
+
+      // FLYWEIGHT: getCategoryById desde cache
+      const cacheKey = `producto_${productoId}`
+      if (!FlyweightCache.has(cacheKey)) FlyweightCache.set(cacheKey, producto)
+
+      // OBSERVER: notificar progreso (55%)
+      ScanObserver.emit("escaneo:progreso", { pct: 55, msg: `Aplicando estrategia "${estratKey}"...` })
+      await sleep(350)
+
+      // STRATEGY: ejecutar algoritmo seleccionado
+      const estrategia = crearEstrategia(estratKey)
+      const items = estrategia.generar(producto.nombre, condicion)
+
+      // OBSERVER: notificar progreso (80%)
+      ScanObserver.emit("escaneo:progreso", { pct: 80, msg: "Construyendo resultado..." })
+      await sleep(300)
+
+      // BUILDER: construir resultado validado paso a paso
+      const res = new RecomendacionResultadoBuilder()
+        .withProducto(producto.id, producto.nombre)
+        .withCondicion(condicion)
+        .withEstrategia(estratKey, estrategia.nombre)
+        .withRecomendaciones(items)
+        .build()                       // lanza Error si falta algo
+
+      // OBSERVER: notificar resultado COMPLETO (100%)
+      ScanObserver.emit("escaneo:progreso", { pct: 100, msg: "¡Listo!" })
+      ScanObserver.emit("escaneo:completo", res)
+
+      await sleep(200)
+      setResultado(res)
+      setVista("resultado")
+    } catch (e: unknown) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const darFeedback = (resultadoId: string, stars: number) => {
+    setFeedback(prev => ({ ...prev, [resultadoId]: stars }))
+    ScanObserver.emit("feedback:enviado", { resultadoId, stars }) // Observer
+  }
+
+  const fw = FlyweightCache.stats()
+  const colorActual = COLORES[estratKey] ?? COLORES.reutilizar
+
+  // ══════════════════════════════════════════════════════════
+  // RENDER
+  // ══════════════════════════════════════════════════════════
+  return (
+    <div className="space-y-6">
+
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">Recomendaciones</h2>
+          <p className="text-sm text-muted-foreground">
+            Analiza un producto y obtén recomendaciones de reutilización
+          </p>
+        </div>
+        <Badge variant="outline" className="text-xs font-mono gap-1">
+          🪶 Flyweight: {fw.size} cached
+        </Badge>
+      </div>
+
+      {vista === "formulario" ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+
+          {/* Columna izquierda: formulario */}
+          <div className="space-y-5">
+
+            {/* Imagen */}
+            {!imagen ? (
+              <div
+                onClick={() => fileRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); handleImagen(e.dataTransfer.files[0]) }}
+                className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 p-10 cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
+              >
+                <span className="text-4xl mb-3">📷</span>
+                <p className="text-sm font-medium text-foreground">Adjunta imagen del producto</p>
+                <p className="text-xs text-muted-foreground mt-1">Arrastra o haz click · JPG · PNG · WEBP</p>
+                <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => handleImagen(e.target.files?.[0] ?? null)} />
+              </div>
+            ) : (
+              <div className="relative">
+                <img src={imagen.preview} alt="producto"
+                  className="w-full max-h-52 object-cover rounded-xl border border-border" />
+                <button onClick={() => setImagen(null)}
+                  className="absolute top-2 right-2 bg-background/90 border border-border text-foreground text-xs px-2 py-1 rounded-md hover:bg-muted transition-colors">
+                  ✕ cambiar
+                </button>
+                <span className="absolute bottom-2 left-2 bg-background/90 text-xs font-mono text-muted-foreground px-2 py-1 rounded-md">
+                  {imagen.nombre}
+                </span>
+              </div>
+            )}
+
+            {/* Producto */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Producto
+              </label>
+              {productos.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">No hay productos — créalos en la pestaña Productos</p>
+              ) : (
+                <Select value={productoId} onValueChange={setProductoId}>
+                  <SelectTrigger><SelectValue placeholder="Selecciona un producto" /></SelectTrigger>
+                  <SelectContent>
+                    {productos.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* Condición — Flyweight (datos estáticos) */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Condición <span className="text-muted-foreground/40 normal-case">(Flyweight · estático)</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {condiciones.map(c => (
+                  <button key={c} onClick={() => setCondicion(c)}
+                    className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                      condicion === c
+                        ? "border-primary bg-primary/10 text-primary font-medium"
+                        : "border-border text-muted-foreground hover:border-muted-foreground"
+                    }`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Estrategia — Strategy */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Tipo de análisis <span className="text-muted-foreground/40 normal-case">(Strategy)</span>
+              </label>
+              <div className="flex flex-col gap-2">
+                {estrategias.map(e => {
+                  const meta = ESTRATEGIA_META[e.estrategiaKey]
+                  const col  = COLORES[e.estrategiaKey]
+                  const sel  = estratKey === e.estrategiaKey
+                  return (
+                    <button key={e.estrategiaKey} onClick={() => setEstratKey(e.estrategiaKey)}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
+                        sel ? `${col.border} ${col.bg}` : "border-border hover:border-muted-foreground"
+                      }`}>
+                      <span className="text-xl">{meta.icon}</span>
+                      <div>
+                        <p className={`text-sm font-semibold ${sel ? col.text : "text-foreground"}`}>{e.nombre}</p>
+                        <p className="text-xs text-muted-foreground">{meta.desc}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {loading && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs text-muted-foreground font-mono">
+                  <span>{progresoMsg}</span><span>{progreso}%</span>
+                </div>
+                <Progress value={progreso} className="h-1.5" />
+              </div>
+            )}
+
+            {error && (
+              <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+                ⚠ {error}
+              </p>
+            )}
+
+            <Button
+              onClick={analizar}
+              disabled={loading || !imagen || productos.length === 0}
+              className="w-full"
+            >
+              {loading ? "Procesando..." : "Analizar con IA →"}
+            </Button>
+          </div>
+
+          {/* Columna derecha: patrones activos */}
+          <PatronesPanel fw={fw} />
+        </div>
+
+      ) : resultado && (
+        /* ── RESULTADO ── */
+        <div className="space-y-6">
+          <div className={`rounded-xl border p-5 ${colorActual.border} ${colorActual.bg}`}>
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-2xl">{ESTRATEGIA_META[resultado.estrategiaKey]?.icon}</span>
+              <div>
+                <p className={`font-bold text-lg ${colorActual.text}`}>{resultado.estrategiaNombre}</p>
+                <p className="text-xs text-muted-foreground font-mono">
+                  Builder → confianza {resultado.confianzaPromedio}% · {resultado.procesadoEnMs}ms
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4 mb-5 items-center">
+              {imagen && (
+                <img src={imagen.preview} alt=""
+                  className="w-20 h-20 object-cover rounded-lg border border-border flex-shrink-0" />
+              )}
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Producto analizado</p>
+                <p className="font-bold text-foreground text-lg">{resultado.productoNombre}</p>
+                <p className="text-xs text-muted-foreground">{resultado.condicion}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {resultado.recomendaciones.map((rec, i) => (
+                <div key={i} className="flex gap-3 items-start bg-background/50 rounded-lg p-3 border border-border">
+                  <div className={`flex-shrink-0 w-11 h-11 rounded-lg flex flex-col items-center justify-center text-xs font-bold font-mono ${colorActual.badge} rounded-lg`}>
+                    {rec.confianza}%
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-foreground font-medium leading-snug">{rec.titulo}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{esfuerzos[rec.esfuerzo]}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Feedback — Observer */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">
+                Feedback <span className="text-xs font-normal text-muted-foreground">(Observer emite evento)</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {feedback[resultado.id] ? (
+                <p className="text-sm text-emerald-400">★ Feedback {feedback[resultado.id]}/5 guardado</p>
+              ) : (
+                <div className="flex gap-2">
+                  {[1,2,3,4,5].map(s => (
+                    <button key={s} onClick={() => darFeedback(resultado.id, s)}
+                      className="flex-1 py-2 rounded-lg border border-border text-lg hover:border-yellow-400 hover:bg-yellow-400/10 hover:text-yellow-400 transition-all text-muted-foreground">
+                      ★
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setVista("formulario")} className="flex-1">
+              ← Analizar otro
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Historial — Observer actualiza automáticamente */}
+      {historial.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+            Historial · Observer actualiza en tiempo real
+          </p>
+          {historial.map(r => {
+            const col  = COLORES[r.estrategiaKey] ?? COLORES.reutilizar
+            const meta = ESTRATEGIA_META[r.estrategiaKey]
+            return (
+              <div key={r.id} className={`flex gap-3 items-center p-3 rounded-xl border ${col.border}`}>
+                <span className="text-xl">{meta?.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{r.productoNombre}</p>
+                  <p className="text-xs text-muted-foreground">{r.estrategiaNombre} · {r.confianzaPromedio}% confianza</p>
+                </div>
+                <Badge variant="outline" className={`text-xs ${col.text}`}>
+                  {r.recomendaciones.length} recs
+                </Badge>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Panel lateral: documentación viva de patrones ─────────────
+function PatronesPanel({ fw }: { fw: { size: number; keys: string[] } }) {
+  const items = [
+    {
+      icon: "🏗", nombre: "Builder", tipo: "Creacional",
+      desc: "Construye RecomendacionResultado paso a paso. build() lanza error si falta algún campo.",
+      archivo: "lib/patterns/builder.ts",
+    },
+    {
+      icon: "🪶", nombre: "Flyweight", tipo: "Estructural",
+      desc: `Datos compartidos sin duplicar: condiciones, esfuerzo, estrategias. Cache activo: ${fw.size} objeto${fw.size !== 1 ? "s" : ""}.`,
+      archivo: "lib/patterns/flyweight.ts",
+    },
+    {
+      icon: "⚡", nombre: "Strategy", tipo: "Comportamiento",
+      desc: "Reutilizar / Transformar / Reconfigurar — mismo método generar(), algoritmos distintos.",
+      archivo: "lib/patterns/strategy.ts",
+    },
+    {
+      icon: "👁", nombre: "Observer", tipo: "Comportamiento",
+      desc: "ScanObserver emite progreso parcial y completo. useScanObserver() suscribe componentes.",
+      archivo: "lib/patterns/observer.ts",
+    },
+  ]
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Patrones activos</p>
+      {items.map(p => (
+        <Card key={p.nombre} className="border-border">
+          <CardHeader className="pb-2 pt-4 px-4">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{p.icon}</span>
+              <div>
+                <CardTitle className="text-sm">{p.nombre}</CardTitle>
+                <p className="text-xs text-muted-foreground">{p.tipo}</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-2">
+            <CardDescription className="text-xs leading-relaxed">{p.desc}</CardDescription>
+            <code className="text-xs text-muted-foreground/60 font-mono block">{p.archivo}</code>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+}
