@@ -1,30 +1,30 @@
-# ScanRec — Motor de Recomendaciones por Escaneo
+# Innoscan — Motor de Recomendaciones por Escaneo
 
 ## Correr en local
 
 ### 1. Backend
 ```bash
 cd backend
-cp .env.example .env        # rellenar DATABASE_URL con tu Supabase o PostgreSQL local
+cp .env
 npm install
 npm run db:generate
 npm run db:migrate
 npm run db:seed
-npm run start:dev           # corre en http://localhost:3000
+npm run start:dev           # corre en http://localhost:3001
 ```
 
 ### 2. Frontend
 ```bash
 cd frontend
 npm install
-npm run dev                 # corre en http://localhost:5173
+npm run dev                 # corre en http://localhost:3000
 ```
 
 ---
 
-## Publicar en internet
+## Publicado en internet con Vercel
 
-Ver archivo `DEPLOY.md` para instrucciones paso a paso con Railway + Vercel + Supabase.
+Fue publicado en Vercel + Usando la base de datos Supabase
 
 ---
 
