@@ -4,7 +4,7 @@
   "description": "InnoScan Backend - NestJS + Prisma + PostgreSQL",
   "scripts": {
     "postinstall": "prisma generate",
-    "build": "nest build",
+    "build": "npm install --include=dev && nest build",
     "start": "node dist/main",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
