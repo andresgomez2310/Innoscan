@@ -1,17 +1,12 @@
 {
   "name": "innoscan-backend",
   "version": "1.0.0",
-  "description": "InnoScan Backend - NestJS + Prisma + PostgreSQL",
+  "description": "InnoScan Backend - NestJS + Supabase",
   "scripts": {
-    "postinstall": "prisma generate",
-    "build": "npm install --include=dev && nest build",
+    "build": "nest build",
     "start": "node dist/main",
     "start:dev": "nest start --watch",
-    "start:prod": "node dist/main",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate deploy",
-    "db:seed": "ts-node prisma/seed.ts",
-    "db:push": "prisma db push"
+    "start:prod": "node dist/main"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -20,18 +15,17 @@
     "@nestjs/event-emitter": "^2.0.0",
     "@nestjs/config": "^3.0.0",
     "@nestjs/mapped-types": "^2.0.0",
-    "@prisma/client": "^5.0.0",
+    "@nestjs/cli": "^10.0.0",
+    "@nestjs/schematics": "^10.0.0",
+    "@supabase/supabase-js": "^2.0.0",
     "class-validator": "^0.14.0",
     "class-transformer": "^0.5.1",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
-    "@nestjs/cli": "^10.0.0",
-    "@nestjs/schematics": "^10.0.0",
     "typescript": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "prisma": "^5.0.0",
     "ts-node": "^10.9.1"
   }
 }

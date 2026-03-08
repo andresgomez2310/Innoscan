@@ -1,20 +1,18 @@
-// ══════════════════════════════════════════════════════════════
-// PATRÓN FLYWEIGHT (Estructural)
-//
-// Cachea en memoria los datos compartidos que raramente cambian:
-//   · categories          → DB (1 query al arrancar)
-//   · transformationTypes → DB (1 query al arrancar)
-//   · conditionTags       → estático (nunca va a DB)
-//   · effortLabels        → estático (nunca va a DB)
-//
-// Sin Flyweight: N queries por request.
-// Con Flyweight: 0 queries (sirve desde memoria).
-// ══════════════════════════════════════════════════════════════
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Category, TransformationType } from '@prisma/client';
 
-// Datos estáticos — misma referencia en toda la app
+export interface Category {
+  id: string;
+  label: string;
+  [key: string]: any;
+}
+
+export interface TransformationType {
+  id: string;
+  strategyKey: string;
+  [key: string]: any;
+}
+
 export const CONDITION_TAGS = ['nuevo','bueno','regular','dañado','antiguo','raro'] as const;
 export const EFFORT_LABELS: Record<string, string> = {
   bajo:  '🟢 Bajo',
@@ -30,7 +28,6 @@ export class FlyweightService implements OnModuleInit {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // Precarga todo al arrancar — un solo viaje a DB para toda la vida del servidor
   async onModuleInit() {
     await Promise.all([this.getCategories(), this.getTransformationTypes()]);
     this.logger.log(
@@ -60,7 +57,6 @@ export class FlyweightService implements OnModuleInit {
     return (await this.getTransformationTypes()).find(t => t.id === id);
   }
 
-  // Datos estáticos compartidos (nunca van a DB)
   getConditionTags()  { return CONDITION_TAGS; }
   getEffortLabels()   { return EFFORT_LABELS;  }
 
