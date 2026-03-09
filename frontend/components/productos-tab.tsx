@@ -1,139 +1,100 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
+import React, { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Package, Barcode, Tag, Trash2 } from "lucide-react"
+import { Plus, Package, Barcode, Tag, Trash2, Search } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 interface Producto {
-  id: string
-  nombre: string
-  descripcion: string | null
-  categoria: string | null
-  codigo_barras: string | null
-  created_at: string
+  id: string; nombre: string; descripcion: string | null
+  categoria: string | null; codigo_barras: string | null; created_at: string
 }
 
-interface ProductosTabProps {
-  productos: Producto[]
-}
-
-export function ProductosTab({ productos }: ProductosTabProps) {
+export function ProductosTab({ productos }: { productos: Producto[] }) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    nombre: "",
-    descripcion: "",
-    categoria: "",
-    codigo_barras: "",
-  })
+  const [open, setOpen]         = useState(false)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState("")
+  const [filtro, setFiltro]     = useState("")
+  const [campos, setCampos]     = useState<Record<string, string>>({})
+  const [form, setForm]         = useState({ nombre: "", descripcion: "", categoria: "", codigo_barras: "" })
+
+  function set(k: string, v: string) {
+    setForm(p => ({ ...p, [k]: v }))
+    setCampos(p => ({ ...p, [k]: "" }))
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
+    const errs: Record<string, string> = {}
+    if (!form.nombre.trim())               errs.nombre = "El nombre es obligatorio"
+    else if (form.nombre.trim().length < 2) errs.nombre = "Mínimo 2 caracteres"
+    if (Object.keys(errs).length) { setCampos(errs); return }
 
-    const supabase = createClient()
-    const { error } = await supabase.from("productos").insert({
-      nombre: formData.nombre,
-      descripcion: formData.descripcion || null,
-      categoria: formData.categoria || null,
-      codigo_barras: formData.codigo_barras || null,
+    setLoading(true); setError("")
+    const { error: err } = await createClient().from("productos").insert({
+      nombre: form.nombre.trim(),
+      descripcion: form.descripcion || null,
+      categoria: form.categoria || null,
+      codigo_barras: form.codigo_barras || null,
     })
-
-    if (!error) {
-      setFormData({ nombre: "", descripcion: "", categoria: "", codigo_barras: "" })
-      setOpen(false)
-      router.refresh()
-    }
-    setLoading(false)
+    if (err) { setError(err.message); setLoading(false); return }
+    setForm({ nombre: "", descripcion: "", categoria: "", codigo_barras: "" })
+    setOpen(false); setLoading(false); router.refresh()
   }
 
   async function handleDelete(id: string) {
-    const supabase = createClient()
-    await supabase.from("productos").delete().eq("id", id)
+    await createClient().from("productos").delete().eq("id", id)
     router.refresh()
   }
+
+  const lista = filtro.trim()
+    ? productos.filter(p => p.categoria?.toLowerCase().includes(filtro.toLowerCase()) || p.nombre.toLowerCase().includes(filtro.toLowerCase()))
+    : productos
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Productos</h2>
-          <p className="text-sm text-muted-foreground">
-            Gestiona tu catalogo de productos para escanear
-          </p>
+          <h2 className="text-xl font-semibold">Productos</h2>
+          <p className="text-sm text-muted-foreground">Gestiona tu catálogo de productos</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={v => { setOpen(v); setError(""); setCampos({}) }}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Nuevo Producto
-            </Button>
+            <Button className="gap-2"><Plus className="h-4 w-4" />Nuevo Producto</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Agregar Producto</DialogTitle>
-            </DialogHeader>
+            <DialogHeader><DialogTitle>Agregar Producto</DialogTitle></DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="nombre">Nombre *</Label>
-                <Input
-                  id="nombre"
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+              {error && <p className="text-sm text-destructive bg-destructive/10 rounded p-2">{error}</p>}
+              <div className="space-y-1">
+                <Label>Nombre *</Label>
+                <Input value={form.nombre} onChange={e => set("nombre", e.target.value)}
                   placeholder="Nombre del producto"
-                  required
-                />
+                  className={campos.nombre ? "border-destructive" : ""} />
+                {campos.nombre && <p className="text-xs text-destructive">{campos.nombre}</p>}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="descripcion">Descripcion</Label>
-                <Textarea
-                  id="descripcion"
-                  value={formData.descripcion}
-                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                  placeholder="Descripcion del producto"
-                  rows={3}
-                />
+              <div className="space-y-1">
+                <Label>Descripción</Label>
+                <Textarea value={form.descripcion} onChange={e => set("descripcion", e.target.value)}
+                  placeholder="Descripción del producto" rows={3} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="categoria">Categoria</Label>
-                <Input
-                  id="categoria"
-                  value={formData.categoria}
-                  onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                  placeholder="Ej: Electronica, Alimentos..."
-                />
+              <div className="space-y-1">
+                <Label>Categoría</Label>
+                <Input value={form.categoria} onChange={e => set("categoria", e.target.value)}
+                  placeholder="Ej: Electrónica, Alimentos..." />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="codigo_barras">Codigo de Barras</Label>
-                <Input
-                  id="codigo_barras"
-                  value={formData.codigo_barras}
-                  onChange={(e) => setFormData({ ...formData, codigo_barras: e.target.value })}
-                  placeholder="Codigo de barras del producto"
-                />
+              <div className="space-y-1">
+                <Label>Código de Barras</Label>
+                <Input value={form.codigo_barras} onChange={e => set("codigo_barras", e.target.value)}
+                  placeholder="Código de barras" />
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Guardando..." : "Guardar Producto"}
@@ -143,20 +104,24 @@ export function ProductosTab({ productos }: ProductosTabProps) {
         </Dialog>
       </div>
 
-      {productos.length === 0 ? (
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input className="pl-9" placeholder="Buscar por nombre o categoría..."
+          value={filtro} onChange={e => setFiltro(e.target.value)} />
+      </div>
+
+      {lista.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Package className="h-12 w-12 text-muted-foreground" />
-            <p className="mt-4 text-lg font-medium text-foreground">No hay productos</p>
-            <p className="text-sm text-muted-foreground">
-              Agrega tu primer producto para comenzar
-            </p>
+            <p className="mt-4 text-lg font-medium">{filtro ? "Sin resultados" : "No hay productos"}</p>
+            <p className="text-sm text-muted-foreground">{filtro ? "Prueba otra búsqueda" : "Agrega tu primer producto"}</p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {productos.map((producto) => (
-            <Card key={producto.id} className="group relative">
+          {lista.map(p => (
+            <Card key={p.id} className="group relative">
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -164,35 +129,22 @@ export function ProductosTab({ productos }: ProductosTabProps) {
                       <Package className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <CardTitle className="text-base">{producto.nombre}</CardTitle>
-                      {producto.categoria && (
-                        <Badge variant="secondary" className="mt-1">
-                          <Tag className="mr-1 h-3 w-3" />
-                          {producto.categoria}
-                        </Badge>
-                      )}
+                      <CardTitle className="text-base">{p.nombre}</CardTitle>
+                      {p.categoria && <Badge variant="secondary" className="mt-1"><Tag className="mr-1 h-3 w-3" />{p.categoria}</Badge>}
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  <Button variant="ghost" size="icon"
                     className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => handleDelete(producto.id)}
-                  >
+                    onClick={() => handleDelete(p.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
-                {producto.descripcion && (
-                  <CardDescription className="line-clamp-2">
-                    {producto.descripcion}
-                  </CardDescription>
-                )}
-                {producto.codigo_barras && (
+                {p.descripcion && <CardDescription className="line-clamp-2">{p.descripcion}</CardDescription>}
+                {p.codigo_barras && (
                   <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                    <Barcode className="h-4 w-4" />
-                    <span className="font-mono">{producto.codigo_barras}</span>
+                    <Barcode className="h-4 w-4" /><span className="font-mono">{p.codigo_barras}</span>
                   </div>
                 )}
               </CardContent>

@@ -1,46 +1,45 @@
 "use client"
 
 import React, { useState, useRef } from "react"
-import { Button }      from "@/components/ui/button"
-import { Badge }       from "@/components/ui/badge"
+import { useRouter } from "next/navigation"
+import { Button }   from "@/components/ui/button"
+import { Badge }    from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
+import { createClient } from "@/lib/supabase/client"
 
-// ── Patrones ──────────────────────────────────────────────────
-import {
-  CONDICION_TAGS, ESFUERZO_LABELS, ESTRATEGIA_META, FlyweightCache,
-  type CondicionTag,
-} from "@/lib/patterns/flyweight"
+import { CONDICION_TAGS, ESFUERZO_LABELS, ESTRATEGIA_META, FlyweightCache, type CondicionTag } from "@/lib/patterns/flyweight"
 import { crearEstrategia, todasLasEstrategias } from "@/lib/patterns/strategy"
 import { RecomendacionResultadoBuilder, type RecomendacionResultado } from "@/lib/patterns/builder"
 import { ScanObserver, useScanObserver } from "@/lib/patterns/observer"
 
-interface Producto {
-  id: string
-  nombre: string
-  categoria: string | null
+interface Producto { id: string; nombre: string; categoria: string | null }
+interface RecDB {
+  id: string; producto_id: string; producto_nombre: string
+  estrategia_key: string; estrategia_nombre: string
+  confianza_promedio: number; estado: string; created_at: string
 }
 
-interface RecomendacionesTabProps {
-  productos: Producto[]
-}
-
-// Simula el delay de procesamiento para mostrar el Observer en acción
 async function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
 
-// ── Colores tailwind por estrategia ───────────────────────────
 const COLORES: Record<string, { border: string; bg: string; text: string; badge: string }> = {
   reutilizar:   { border: "border-emerald-500/30", bg: "bg-emerald-500/10", text: "text-emerald-400", badge: "bg-emerald-500/20 text-emerald-300" },
   transformar:  { border: "border-yellow-500/30",  bg: "bg-yellow-500/10",  text: "text-yellow-400",  badge: "bg-yellow-500/20 text-yellow-300"  },
   reconfigurar: { border: "border-pink-500/30",    bg: "bg-pink-500/10",    text: "text-pink-400",    badge: "bg-pink-500/20 text-pink-300"    },
 }
 
-export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
-  // ── FLYWEIGHT: datos compartidos cacheados ─────────────────
-  const condiciones  = CONDICION_TAGS                        // estático, misma referencia siempre
-  const estrategias  = todasLasEstrategias()                 // instancias únicas reutilizadas
-  const esfuerzos    = ESFUERZO_LABELS                       // estático, misma referencia siempre
+export function RecomendacionesTab({
+  productos,
+  recomendacionesPrevias = [],
+}: {
+  productos: Producto[]
+  recomendacionesPrevias?: RecDB[]
+}) {
+  const router = useRouter()
+  const condiciones = CONDICION_TAGS
+  const estrategias = todasLasEstrategias()
+  const esfuerzos   = ESFUERZO_LABELS
 
   const [productoId,  setProductoId]  = useState("")
   const [condicion,   setCondicion]   = useState<CondicionTag>("bueno")
@@ -53,73 +52,94 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
   const [historial,   setHistorial]   = useState<RecomendacionResultado[]>([])
   const [error,       setError]       = useState("")
   const [feedback,    setFeedback]    = useState<Record<string, number>>({})
+  const [guardando,   setGuardando]   = useState(false)
+  const [guardadoOk,  setGuardadoOk]  = useState(false)
   const [vista,       setVista]       = useState<"formulario" | "resultado">("formulario")
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // ── OBSERVER: suscriptor de progreso ──────────────────────
+  // OBSERVER: escucha progreso y resultado completo
   useScanObserver<{ pct: number; msg: string }>("escaneo:progreso", ({ pct, msg }) => {
-    setProgreso(pct)
-    setProgresoMsg(msg)
+    setProgreso(pct); setProgresoMsg(msg)
   })
   useScanObserver<RecomendacionResultado>("escaneo:completo", (r) => {
     setHistorial(prev => [r, ...prev])
   })
 
   const handleImagen = (file: File | null) => {
-    if (!file || !file.type.startsWith("image/")) return
+    if (!file) return
+    if (!file.type.startsWith("image/")) { setError("El archivo debe ser una imagen (JPG, PNG, WEBP)"); return }
     const reader = new FileReader()
-    reader.onload = (e) => {
-      setImagen({ preview: e.target?.result as string, nombre: file.name })
-      setError("")
-    }
+    reader.onload = e => { setImagen({ preview: e.target?.result as string, nombre: file.name }); setError("") }
     reader.readAsDataURL(file)
   }
 
-  const analizar = async () => {
-    if (!imagen)     { setError("Adjunta una imagen del producto"); return }
-    if (!productoId) { setError("Selecciona un producto"); return }
-    setError(""); setLoading(true); setProgreso(0)
+  // Guarda el resultado en la tabla "recomendaciones" de Supabase
+  async function guardarEnDB(res: RecomendacionResultado) {
+    setGuardando(true)
+    const { error: err } = await createClient().from("recomendaciones").insert({
+      producto_id:       res.productoId,
+      producto_nombre:   res.productoNombre,
+      condicion:         res.condicion,
+      estrategia_key:    res.estrategiaKey,
+      estrategia_nombre: res.estrategiaNombre,
+      recomendaciones:   res.recomendaciones,
+      confianza_promedio: res.confianzaPromedio,
+      procesado_en_ms:   res.procesadoEnMs,
+      estado:            res.estado,
+    })
+    setGuardando(false)
+    if (!err) { setGuardadoOk(true); router.refresh() }
+    else setError(`Error al guardar: ${err.message}`)
+  }
 
+  const analizar = async () => {
+    if (!imagen)                { setError("Adjunta una imagen del producto"); return }
+    if (!productoId)            { setError("Selecciona un producto"); return }
+    setError(""); setLoading(true); setProgreso(0); setGuardadoOk(false)
     const producto = productos.find(p => p.id === productoId)!
 
     try {
-      // OBSERVER: notificar inicio parcial (25%)
+      // OBSERVER 25%
       ScanObserver.emit("escaneo:progreso", { pct: 25, msg: "Analizando imagen..." })
       await sleep(400)
 
-      // FLYWEIGHT: getCategoryById desde cache
+      // FLYWEIGHT: cache del producto
       const cacheKey = `producto_${productoId}`
       if (!FlyweightCache.has(cacheKey)) FlyweightCache.set(cacheKey, producto)
 
-      // OBSERVER: notificar progreso (55%)
+      // OBSERVER 55%
       ScanObserver.emit("escaneo:progreso", { pct: 55, msg: `Aplicando estrategia "${estratKey}"...` })
       await sleep(350)
 
-      // STRATEGY: ejecutar algoritmo seleccionado
+      // STRATEGY: ejecutar algoritmo
       const estrategia = crearEstrategia(estratKey)
       const items = estrategia.generar(producto.nombre, condicion)
 
-      // OBSERVER: notificar progreso (80%)
+      // OBSERVER 80%
       ScanObserver.emit("escaneo:progreso", { pct: 80, msg: "Construyendo resultado..." })
       await sleep(300)
 
-      // BUILDER: construir resultado validado paso a paso
+      // BUILDER: construir y validar resultado
       const res = new RecomendacionResultadoBuilder()
         .withProducto(producto.id, producto.nombre)
         .withCondicion(condicion)
         .withEstrategia(estratKey, estrategia.nombre)
         .withRecomendaciones(items)
-        .build()                       // lanza Error si falta algo
+        .build()
 
-      // OBSERVER: notificar resultado COMPLETO (100%)
+      // OBSERVER 100%
       ScanObserver.emit("escaneo:progreso", { pct: 100, msg: "¡Listo!" })
       ScanObserver.emit("escaneo:completo", res)
-
       await sleep(200)
+
       setResultado(res)
       setVista("resultado")
+
+      // Guardar automáticamente en Supabase (entidad 4 — tabla recomendaciones)
+      await guardarEnDB(res)
+
     } catch (e: unknown) {
-      setError((e as Error).message)
+      setError((e as Error).message ?? "Error inesperado")
     } finally {
       setLoading(false)
     }
@@ -127,47 +147,35 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
 
   const darFeedback = (resultadoId: string, stars: number) => {
     setFeedback(prev => ({ ...prev, [resultadoId]: stars }))
-    ScanObserver.emit("feedback:enviado", { resultadoId, stars }) // Observer
+    ScanObserver.emit("feedback:enviado", { resultadoId, stars })
   }
 
   const fw = FlyweightCache.stats()
   const colorActual = COLORES[estratKey] ?? COLORES.reutilizar
 
-  // ══════════════════════════════════════════════════════════
-  // RENDER
-  // ══════════════════════════════════════════════════════════
   return (
     <div className="space-y-6">
-
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Recomendaciones</h2>
-          <p className="text-sm text-muted-foreground">
-            Analiza un producto y obtén recomendaciones de reutilización
-          </p>
+          <h2 className="text-xl font-semibold">Recomendaciones</h2>
+          <p className="text-sm text-muted-foreground">Analiza un producto y obtén recomendaciones de reutilización</p>
         </div>
-        <Badge variant="outline" className="text-xs font-mono gap-1">
-          🪶 Flyweight: {fw.size} cached
-        </Badge>
+        <Badge variant="outline" className="text-xs font-mono">🪶 Flyweight: {fw.size} cached</Badge>
       </div>
 
       {vista === "formulario" ? (
         <div className="grid gap-6 lg:grid-cols-2">
-
-          {/* Columna izquierda: formulario */}
+          {/* Formulario */}
           <div className="space-y-5">
-
             {/* Imagen */}
             {!imagen ? (
-              <div
-                onClick={() => fileRef.current?.click()}
+              <div onClick={() => fileRef.current?.click()}
                 onDragOver={e => e.preventDefault()}
                 onDrop={e => { e.preventDefault(); handleImagen(e.dataTransfer.files[0]) }}
-                className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 p-10 cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
-              >
+                className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 p-10 cursor-pointer hover:border-primary/50 transition-colors">
                 <span className="text-4xl mb-3">📷</span>
-                <p className="text-sm font-medium text-foreground">Adjunta imagen del producto</p>
+                <p className="text-sm font-medium">Adjunta imagen del producto</p>
                 <p className="text-xs text-muted-foreground mt-1">Arrastra o haz click · JPG · PNG · WEBP</p>
                 <input ref={fileRef} type="file" accept="image/*" className="hidden"
                   onChange={e => handleImagen(e.target.files?.[0] ?? null)} />
@@ -175,12 +183,12 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
             ) : (
               <div className="relative">
                 <img src={imagen.preview} alt="producto"
-                  className="w-full max-h-52 object-cover rounded-xl border border-border" />
+                  className="w-full max-h-52 object-cover rounded-xl border" />
                 <button onClick={() => setImagen(null)}
-                  className="absolute top-2 right-2 bg-background/90 border border-border text-foreground text-xs px-2 py-1 rounded-md hover:bg-muted transition-colors">
+                  className="absolute top-2 right-2 bg-background/90 border text-xs px-2 py-1 rounded-md hover:bg-muted transition-colors">
                   ✕ cambiar
                 </button>
-                <span className="absolute bottom-2 left-2 bg-background/90 text-xs font-mono text-muted-foreground px-2 py-1 rounded-md">
+                <span className="absolute bottom-2 left-2 bg-background/90 text-xs font-mono px-2 py-1 rounded-md">
                   {imagen.nombre}
                 </span>
               </div>
@@ -188,38 +196,30 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
 
             {/* Producto */}
             <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Producto
-              </label>
+              <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Producto</label>
               {productos.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic">No hay productos — créalos en la pestaña Productos</p>
               ) : (
-                <Select value={productoId} onValueChange={setProductoId}>
+                <Select value={productoId} onValueChange={v => { setProductoId(v); setError("") }}>
                   <SelectTrigger><SelectValue placeholder="Selecciona un producto" /></SelectTrigger>
                   <SelectContent>
-                    {productos.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
-                    ))}
+                    {productos.map(p => <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>)}
                   </SelectContent>
                 </Select>
               )}
             </div>
 
-            {/* Condición — Flyweight (datos estáticos) */}
+            {/* Condición — Flyweight */}
             <div className="space-y-2">
               <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Condición <span className="text-muted-foreground/40 normal-case">(Flyweight · estático)</span>
+                Condición <span className="normal-case text-muted-foreground/40">(Flyweight)</span>
               </label>
               <div className="flex flex-wrap gap-2">
                 {condiciones.map(c => (
                   <button key={c} onClick={() => setCondicion(c)}
                     className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                      condicion === c
-                        ? "border-primary bg-primary/10 text-primary font-medium"
-                        : "border-border text-muted-foreground hover:border-muted-foreground"
-                    }`}>
-                    {c}
-                  </button>
+                      condicion === c ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"
+                    }`}>{c}</button>
                 ))}
               </div>
             </div>
@@ -227,7 +227,7 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
             {/* Estrategia — Strategy */}
             <div className="space-y-2">
               <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Tipo de análisis <span className="text-muted-foreground/40 normal-case">(Strategy)</span>
+                Tipo de análisis <span className="normal-case text-muted-foreground/40">(Strategy)</span>
               </label>
               <div className="flex flex-col gap-2">
                 {estrategias.map(e => {
@@ -236,9 +236,7 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
                   const sel  = estratKey === e.estrategiaKey
                   return (
                     <button key={e.estrategiaKey} onClick={() => setEstratKey(e.estrategiaKey)}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
-                        sel ? `${col.border} ${col.bg}` : "border-border hover:border-muted-foreground"
-                      }`}>
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${sel ? `${col.border} ${col.bg}` : "border-border"}`}>
                       <span className="text-xl">{meta.icon}</span>
                       <div>
                         <p className={`text-sm font-semibold ${sel ? col.text : "text-foreground"}`}>{e.nombre}</p>
@@ -250,6 +248,7 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
               </div>
             </div>
 
+            {/* Progreso — Observer */}
             {loading && (
               <div className="space-y-2">
                 <div className="flex justify-between text-xs text-muted-foreground font-mono">
@@ -265,21 +264,17 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
               </p>
             )}
 
-            <Button
-              onClick={analizar}
-              disabled={loading || !imagen || productos.length === 0}
-              className="w-full"
-            >
-              {loading ? "Procesando..." : "Analizar con IA →"}
+            <Button onClick={analizar} disabled={loading || productos.length === 0} className="w-full">
+              {loading ? "Procesando..." : "Analizar →"}
             </Button>
           </div>
 
-          {/* Columna derecha: patrones activos */}
+          {/* Panel de patrones */}
           <PatronesPanel fw={fw} />
         </div>
 
       ) : resultado && (
-        /* ── RESULTADO ── */
+        /* Resultado */
         <div className="space-y-6">
           <div className={`rounded-xl border p-5 ${colorActual.border} ${colorActual.bg}`}>
             <div className="flex items-center gap-3 mb-4">
@@ -287,31 +282,30 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
               <div>
                 <p className={`font-bold text-lg ${colorActual.text}`}>{resultado.estrategiaNombre}</p>
                 <p className="text-xs text-muted-foreground font-mono">
-                  Builder → confianza {resultado.confianzaPromedio}% · {resultado.procesadoEnMs}ms
+                  Builder · confianza {resultado.confianzaPromedio}% · {resultado.procesadoEnMs}ms
+                  {guardadoOk && <span className="text-emerald-400 ml-2">✓ guardado en DB</span>}
+                  {guardando && <span className="ml-2">guardando...</span>}
                 </p>
               </div>
             </div>
 
             <div className="flex gap-4 mb-5 items-center">
-              {imagen && (
-                <img src={imagen.preview} alt=""
-                  className="w-20 h-20 object-cover rounded-lg border border-border flex-shrink-0" />
-              )}
+              {imagen && <img src={imagen.preview} alt="" className="w-20 h-20 object-cover rounded-lg border flex-shrink-0" />}
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Producto analizado</p>
-                <p className="font-bold text-foreground text-lg">{resultado.productoNombre}</p>
+                <p className="font-bold text-lg">{resultado.productoNombre}</p>
                 <p className="text-xs text-muted-foreground">{resultado.condicion}</p>
               </div>
             </div>
 
             <div className="space-y-3">
               {resultado.recomendaciones.map((rec, i) => (
-                <div key={i} className="flex gap-3 items-start bg-background/50 rounded-lg p-3 border border-border">
-                  <div className={`flex-shrink-0 w-11 h-11 rounded-lg flex flex-col items-center justify-center text-xs font-bold font-mono ${colorActual.badge} rounded-lg`}>
+                <div key={i} className="flex gap-3 items-start bg-background/50 rounded-lg p-3 border">
+                  <div className={`flex-shrink-0 w-11 h-11 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${colorActual.badge}`}>
                     {rec.confianza}%
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-foreground font-medium leading-snug">{rec.titulo}</p>
+                    <p className="text-sm font-medium leading-snug">{rec.titulo}</p>
                     <p className="text-xs text-muted-foreground mt-1">{esfuerzos[rec.esfuerzo]}</p>
                   </div>
                 </div>
@@ -322,9 +316,7 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
           {/* Feedback — Observer */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">
-                Feedback <span className="text-xs font-normal text-muted-foreground">(Observer emite evento)</span>
-              </CardTitle>
+              <CardTitle className="text-base">Feedback <span className="text-xs font-normal text-muted-foreground">(Observer)</span></CardTitle>
             </CardHeader>
             <CardContent>
               {feedback[resultado.id] ? (
@@ -333,24 +325,20 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
                 <div className="flex gap-2">
                   {[1,2,3,4,5].map(s => (
                     <button key={s} onClick={() => darFeedback(resultado.id, s)}
-                      className="flex-1 py-2 rounded-lg border border-border text-lg hover:border-yellow-400 hover:bg-yellow-400/10 hover:text-yellow-400 transition-all text-muted-foreground">
-                      ★
-                    </button>
+                      className="flex-1 py-2 rounded-lg border text-lg hover:border-yellow-400 hover:bg-yellow-400/10 hover:text-yellow-400 transition-all text-muted-foreground">★</button>
                   ))}
                 </div>
               )}
             </CardContent>
           </Card>
 
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setVista("formulario")} className="flex-1">
-              ← Analizar otro
-            </Button>
-          </div>
+          <Button variant="outline" onClick={() => { setVista("formulario"); setGuardadoOk(false) }} className="w-full">
+            ← Analizar otro
+          </Button>
         </div>
       )}
 
-      {/* Historial — Observer actualiza automáticamente */}
+      {/* Historial en memoria — Observer */}
       {historial.length > 0 && (
         <div className="space-y-3">
           <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
@@ -363,12 +351,33 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
               <div key={r.id} className={`flex gap-3 items-center p-3 rounded-xl border ${col.border}`}>
                 <span className="text-xl">{meta?.icon}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{r.productoNombre}</p>
+                  <p className="text-sm font-medium truncate">{r.productoNombre}</p>
                   <p className="text-xs text-muted-foreground">{r.estrategiaNombre} · {r.confianzaPromedio}% confianza</p>
                 </div>
-                <Badge variant="outline" className={`text-xs ${col.text}`}>
-                  {r.recomendaciones.length} recs
-                </Badge>
+                <Badge variant="outline" className={`text-xs ${col.text}`}>{r.recomendaciones.length} recs</Badge>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Recomendaciones guardadas en DB — Entidad 4 */}
+      {recomendacionesPrevias.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+            Guardadas en base de datos ({recomendacionesPrevias.length})
+          </p>
+          {recomendacionesPrevias.map(r => {
+            const col = COLORES[r.estrategia_key] ?? COLORES.reutilizar
+            const meta = ESTRATEGIA_META[r.estrategia_key]
+            return (
+              <div key={r.id} className={`flex gap-3 items-center p-3 rounded-xl border ${col.border} bg-muted/20`}>
+                <span className="text-xl">{meta?.icon ?? "🔄"}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{r.producto_nombre}</p>
+                  <p className="text-xs text-muted-foreground">{r.estrategia_nombre} · {r.confianza_promedio}% confianza</p>
+                </div>
+                <Badge variant="secondary" className="text-xs">{r.estado}</Badge>
               </div>
             )
           })}
@@ -378,43 +387,22 @@ export function RecomendacionesTab({ productos }: RecomendacionesTabProps) {
   )
 }
 
-// ── Panel lateral: documentación viva de patrones ─────────────
 function PatronesPanel({ fw }: { fw: { size: number; keys: string[] } }) {
   const items = [
-    {
-      icon: "🏗", nombre: "Builder", tipo: "Creacional",
-      desc: "Construye RecomendacionResultado paso a paso. build() lanza error si falta algún campo.",
-      archivo: "lib/patterns/builder.ts",
-    },
-    {
-      icon: "🪶", nombre: "Flyweight", tipo: "Estructural",
-      desc: `Datos compartidos sin duplicar: condiciones, esfuerzo, estrategias. Cache activo: ${fw.size} objeto${fw.size !== 1 ? "s" : ""}.`,
-      archivo: "lib/patterns/flyweight.ts",
-    },
-    {
-      icon: "⚡", nombre: "Strategy", tipo: "Comportamiento",
-      desc: "Reutilizar / Transformar / Reconfigurar — mismo método generar(), algoritmos distintos.",
-      archivo: "lib/patterns/strategy.ts",
-    },
-    {
-      icon: "👁", nombre: "Observer", tipo: "Comportamiento",
-      desc: "ScanObserver emite progreso parcial y completo. useScanObserver() suscribe componentes.",
-      archivo: "lib/patterns/observer.ts",
-    },
+    { icon: "🏗", nombre: "Builder",    tipo: "Creacional",     desc: "Construye RecomendacionResultado paso a paso. build() lanza error si falta algún campo.", archivo: "lib/patterns/builder.ts" },
+    { icon: "🪶", nombre: "Flyweight",  tipo: "Estructural",    desc: `Datos compartidos sin duplicar. Cache activo: ${fw.size} objeto${fw.size !== 1 ? "s" : ""}.`, archivo: "lib/patterns/flyweight.ts" },
+    { icon: "⚡", nombre: "Strategy",   tipo: "Comportamiento", desc: "Reutilizar / Transformar / Reconfigurar — mismo método generar(), algoritmos distintos.", archivo: "lib/patterns/strategy.ts" },
+    { icon: "👁", nombre: "Observer",   tipo: "Comportamiento", desc: "ScanObserver emite progreso parcial y completo. useScanObserver() suscribe componentes.", archivo: "lib/patterns/observer.ts" },
   ]
-
   return (
     <div className="space-y-3">
       <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Patrones activos</p>
       {items.map(p => (
-        <Card key={p.nombre} className="border-border">
+        <Card key={p.nombre}>
           <CardHeader className="pb-2 pt-4 px-4">
             <div className="flex items-center gap-2">
               <span className="text-lg">{p.icon}</span>
-              <div>
-                <CardTitle className="text-sm">{p.nombre}</CardTitle>
-                <p className="text-xs text-muted-foreground">{p.tipo}</p>
-              </div>
+              <div><CardTitle className="text-sm">{p.nombre}</CardTitle><p className="text-xs text-muted-foreground">{p.tipo}</p></div>
             </div>
           </CardHeader>
           <CardContent className="px-4 pb-4 space-y-2">
