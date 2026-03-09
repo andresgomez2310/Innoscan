@@ -14,14 +14,14 @@ export class ScansService {
   ) {}
 
   async create(dto: CreateScanDto) {
-    const category = await this.flyweight.getCategoryById(dto.categoryId); // Flyweight
+    const category = await this.flyweight.getCategoryById(dto.categoryId);
     if (!category) throw new NotFoundException(`Categoría "${dto.categoryId}" no existe`);
 
     const scan = await this.prisma.scan.create({
       data: { ...dto, tags: dto.tags ?? [], status: 'PENDING' },
       include: { category: true },
     });
-    this.events.notifyScanCreated(scan); // Observer
+    this.events.notifyScanCreated(scan);
     return scan;
   }
 
@@ -57,5 +57,12 @@ export class ScansService {
       this.prisma.scan.count(),
     ]);
     return { total, byStatus };
+  }
+
+  async remove(id: string) {
+    const supabase = (this.prisma as any).client;
+    const { error } = await supabase.from('escaneos').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+    return { deleted: true, id };
   }
 }

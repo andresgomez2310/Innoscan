@@ -1,27 +1,36 @@
-import { createClient } from "@/lib/supabase/server"
+"use client"
+import { useEffect, useState } from "react"
 import { Dashboard } from "@/components/dashboard"
+import { apiProductosList, apiIdeasList, apiEscaneosList, apiRecommendList } from "@/lib/api/client"
 
-export default async function HomePage() {
-  const supabase = await createClient()
+export default function HomePage() {
+  const [data, setData] = useState<any>(null)
 
-  const [productosRes, ideasRes, escaneosRes, recsRes] = await Promise.all([
-    supabase.from("productos").select("*").order("created_at", { ascending: false }),
-    supabase.from("ideas").select("*, productos(nombre)").order("created_at", { ascending: false }),
-    supabase.from("escaneos").select("*, productos(nombre)").order("created_at", { ascending: false }).limit(50),
-    supabase.from("recomendaciones").select("id, producto_id, producto_nombre, estrategia_key, estrategia_nombre, confianza_promedio, estado, created_at").order("created_at", { ascending: false }).limit(50),
-  ])
+  useEffect(() => {
+    Promise.all([
+      apiProductosList(),
+      apiIdeasList(),
+      apiEscaneosList(1, 50),
+      apiRecommendList(),
+    ]).then(([productos, ideas, escaneosRes, recomendaciones]) => {
+      console.log("✅ datos del backend:", { productos, ideas, escaneosRes, recomendaciones })
+      setData({
+        productos,
+        ideas,
+        escaneos: (escaneosRes as any)?.data ?? [],
+        recomendaciones,
+      })
+    }).catch(e => console.error("❌ error:", e))
+  }, [])
 
-  if (productosRes.error) console.error("[DB] productos:", productosRes.error.message)
-  if (ideasRes.error)     console.error("[DB] ideas:",     ideasRes.error.message)
-  if (escaneosRes.error)  console.error("[DB] escaneos:",  escaneosRes.error.message)
-  if (recsRes.error)      console.error("[DB] recs:",      recsRes.error.message)
+  if (!data) return <p style={{padding:40}}>Cargando...</p>
 
   return (
     <Dashboard
-      productos={productosRes.data ?? []}
-      ideas={ideasRes.data ?? []}
-      escaneos={escaneosRes.data ?? []}
-      recomendaciones={recsRes.data ?? []}
+      productos={data.productos}
+      ideas={data.ideas}
+      escaneos={data.escaneos}
+      recomendaciones={data.recomendaciones}
     />
   )
 }

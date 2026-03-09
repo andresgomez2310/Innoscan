@@ -1,5 +1,4 @@
-// scans.controller.ts
-import { Controller, Get, Post, Patch, Param, Body, Query, ParseUUIDPipe, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, ParseUUIDPipe, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
 import { ScansService }  from './scans.service';
 import { CreateScanDto } from './dto/create-scan.dto';
 import { UpdateScanDto } from './dto/update-scan.dto';
@@ -13,7 +12,8 @@ export class ScansController {
     @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page:  number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) { return this.service.findAll(page, limit); }
-  @Get('stats') stats() { return this.service.getStats(); }
-  @Get(':id')   findOne(@Param('id', ParseUUIDPipe) id: string) { return this.service.findOne(id); }
-  @Patch(':id') update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateScanDto) { return this.service.update(id, dto); }
+  @Get('stats') stats()                                          { return this.service.getStats(); }
+  @Get(':id')   findOne(@Param('id') id: string)                 { return this.service.findOne(id); }
+  @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateScanDto) { return this.service.update(id, dto); }
+  @Delete(':id') remove(@Param('id') id: string)                { return this.service.remove(id); }
 }
