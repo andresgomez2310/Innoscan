@@ -3,24 +3,12 @@
 import React, { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProductosTab }       from "@/components/productos-tab"
-import { IdeasTab }           from "@/components/ideas-tab"
-import { EscaneosTab }        from "@/components/escaneos-tab"
 import { RecomendacionesTab } from "@/components/recomendaciones-tab"
 import { Package, Lightbulb, ScanLine, Sparkles, Wand2 } from "lucide-react"
 
 interface Producto {
   id: string; nombre: string; descripcion: string | null
   categoria: string | null; codigo_barras: string | null; created_at: string
-}
-interface Idea {
-  id: string; producto_id: string; titulo: string; descripcion: string
-  categoria: string | null; estado: string; created_at: string
-  productos?: { nombre: string }
-}
-interface Escaneo {
-  id: string; producto_id: string; created_at: string
-  ubicacion: string | null; notas: string | null
-  productos?: { nombre: string }
 }
 interface Recomendacion {
   id: string; producto_id: string; producto_nombre: string
@@ -29,8 +17,8 @@ interface Recomendacion {
 }
 interface DashboardProps {
   productos: Producto[]
-  ideas: Idea[]
-  escaneos: Escaneo[]
+  ideas: any[]
+  escaneos: any[]
   recomendaciones: Recomendacion[]
 }
 
@@ -62,18 +50,12 @@ export function Dashboard({ productos, ideas, escaneos, recomendaciones }: Dashb
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-none lg:gap-2">
+          <TabsList className="grid w-full grid-cols-2 lg:w-auto lg:grid-cols-none lg:gap-2">
             <TabsTrigger value="recomendaciones" className="gap-2">
               <Wand2 className="h-4 w-4" /><span className="hidden sm:inline">Recomendaciones</span>
             </TabsTrigger>
             <TabsTrigger value="productos" className="gap-2">
               <Package className="h-4 w-4" /><span className="hidden sm:inline">Productos</span>
-            </TabsTrigger>
-            <TabsTrigger value="ideas" className="gap-2">
-              <Lightbulb className="h-4 w-4" /><span className="hidden sm:inline">Ideas</span>
-            </TabsTrigger>
-            <TabsTrigger value="escaneos" className="gap-2">
-              <ScanLine className="h-4 w-4" /><span className="hidden sm:inline">Escaneos</span>
             </TabsTrigger>
           </TabsList>
 
@@ -82,12 +64,6 @@ export function Dashboard({ productos, ideas, escaneos, recomendaciones }: Dashb
           </TabsContent>
           <TabsContent value="productos">
             <ProductosTab productos={productos} />
-          </TabsContent>
-          <TabsContent value="ideas">
-            <IdeasTab ideas={ideas} productos={productos} />
-          </TabsContent>
-          <TabsContent value="escaneos">
-            <EscaneosTab escaneos={escaneos} productos={productos} />
           </TabsContent>
         </Tabs>
       </main>
