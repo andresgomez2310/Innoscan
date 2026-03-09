@@ -4,7 +4,7 @@ import React, { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button }   from "@/components/ui/button"
 import { Badge }    from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { createClient } from "@/lib/supabase/client"
@@ -57,7 +57,6 @@ export function RecomendacionesTab({
   const [vista,       setVista]       = useState<"formulario" | "resultado">("formulario")
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // OBSERVER: escucha progreso y resultado completo
   useScanObserver<{ pct: number; msg: string }>("escaneo:progreso", ({ pct, msg }) => {
     setProgreso(pct); setProgresoMsg(msg)
   })
@@ -73,19 +72,18 @@ export function RecomendacionesTab({
     reader.readAsDataURL(file)
   }
 
-  // Guarda el resultado en la tabla "recomendaciones" de Supabase
   async function guardarEnDB(res: RecomendacionResultado) {
     setGuardando(true)
     const { error: err } = await createClient().from("recomendaciones").insert({
-      producto_id:       res.productoId,
-      producto_nombre:   res.productoNombre,
-      condicion:         res.condicion,
-      estrategia_key:    res.estrategiaKey,
-      estrategia_nombre: res.estrategiaNombre,
-      recomendaciones:   res.recomendaciones,
+      producto_id:        res.productoId,
+      producto_nombre:    res.productoNombre,
+      condicion:          res.condicion,
+      estrategia_key:     res.estrategiaKey,
+      estrategia_nombre:  res.estrategiaNombre,
+      recomendaciones:    res.recomendaciones,
       confianza_promedio: res.confianzaPromedio,
-      procesado_en_ms:   res.procesadoEnMs,
-      estado:            res.estado,
+      procesado_en_ms:    res.procesadoEnMs,
+      estado:             res.estado,
     })
     setGuardando(false)
     if (!err) { setGuardadoOk(true); router.refresh() }
@@ -93,33 +91,27 @@ export function RecomendacionesTab({
   }
 
   const analizar = async () => {
-    if (!imagen)                { setError("Adjunta una imagen del producto"); return }
-    if (!productoId)            { setError("Selecciona un producto"); return }
+    if (!imagen)     { setError("Adjunta una imagen del producto"); return }
+    if (!productoId) { setError("Selecciona un producto"); return }
     setError(""); setLoading(true); setProgreso(0); setGuardadoOk(false)
     const producto = productos.find(p => p.id === productoId)!
 
     try {
-      // OBSERVER 25%
       ScanObserver.emit("escaneo:progreso", { pct: 25, msg: "Analizando imagen..." })
       await sleep(400)
 
-      // FLYWEIGHT: cache del producto
-      const cacheKey = `producto_${productoId}`
-      if (!FlyweightCache.has(cacheKey)) FlyweightCache.set(cacheKey, producto)
+      if (!FlyweightCache.has(`producto_${productoId}`))
+        FlyweightCache.set(`producto_${productoId}`, producto)
 
-      // OBSERVER 55%
       ScanObserver.emit("escaneo:progreso", { pct: 55, msg: `Aplicando estrategia "${estratKey}"...` })
       await sleep(350)
 
-      // STRATEGY: ejecutar algoritmo
       const estrategia = crearEstrategia(estratKey)
       const items = estrategia.generar(producto.nombre, condicion)
 
-      // OBSERVER 80%
       ScanObserver.emit("escaneo:progreso", { pct: 80, msg: "Construyendo resultado..." })
       await sleep(300)
 
-      // BUILDER: construir y validar resultado
       const res = new RecomendacionResultadoBuilder()
         .withProducto(producto.id, producto.nombre)
         .withCondicion(condicion)
@@ -127,15 +119,12 @@ export function RecomendacionesTab({
         .withRecomendaciones(items)
         .build()
 
-      // OBSERVER 100%
       ScanObserver.emit("escaneo:progreso", { pct: 100, msg: "¡Listo!" })
       ScanObserver.emit("escaneo:completo", res)
       await sleep(200)
 
       setResultado(res)
       setVista("resultado")
-
-      // Guardar automáticamente en Supabase (entidad 4 — tabla recomendaciones)
       await guardarEnDB(res)
 
     } catch (e: unknown) {
@@ -165,116 +154,105 @@ export function RecomendacionesTab({
       </div>
 
       {vista === "formulario" ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Formulario */}
-          <div className="space-y-5">
-            {/* Imagen */}
-            {!imagen ? (
-              <div onClick={() => fileRef.current?.click()}
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => { e.preventDefault(); handleImagen(e.dataTransfer.files[0]) }}
-                className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 p-10 cursor-pointer hover:border-primary/50 transition-colors">
-                <span className="text-4xl mb-3">📷</span>
-                <p className="text-sm font-medium">Adjunta imagen del producto</p>
-                <p className="text-xs text-muted-foreground mt-1">Arrastra o haz click · JPG · PNG · WEBP</p>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => handleImagen(e.target.files?.[0] ?? null)} />
-              </div>
+        <div className="max-w-lg space-y-5">
+          {/* Imagen */}
+          {!imagen ? (
+            <div onClick={() => fileRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); handleImagen(e.dataTransfer.files[0]) }}
+              className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 p-10 cursor-pointer hover:border-primary/50 transition-colors">
+              <span className="text-4xl mb-3">📷</span>
+              <p className="text-sm font-medium">Adjunta imagen del producto</p>
+              <p className="text-xs text-muted-foreground mt-1">Arrastra o haz click · JPG · PNG · WEBP</p>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                onChange={e => handleImagen(e.target.files?.[0] ?? null)} />
+            </div>
+          ) : (
+            <div className="relative">
+              <img src={imagen.preview} alt="producto"
+                className="w-full max-h-52 object-cover rounded-xl border" />
+              <button onClick={() => setImagen(null)}
+                className="absolute top-2 right-2 bg-background/90 border text-xs px-2 py-1 rounded-md hover:bg-muted transition-colors">
+                ✕ cambiar
+              </button>
+              <span className="absolute bottom-2 left-2 bg-background/90 text-xs font-mono px-2 py-1 rounded-md">
+                {imagen.nombre}
+              </span>
+            </div>
+          )}
+
+          {/* Producto */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Producto</label>
+            {productos.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No hay productos — créalos en la pestaña Productos</p>
             ) : (
-              <div className="relative">
-                <img src={imagen.preview} alt="producto"
-                  className="w-full max-h-52 object-cover rounded-xl border" />
-                <button onClick={() => setImagen(null)}
-                  className="absolute top-2 right-2 bg-background/90 border text-xs px-2 py-1 rounded-md hover:bg-muted transition-colors">
-                  ✕ cambiar
-                </button>
-                <span className="absolute bottom-2 left-2 bg-background/90 text-xs font-mono px-2 py-1 rounded-md">
-                  {imagen.nombre}
-                </span>
-              </div>
+              <Select value={productoId} onValueChange={v => { setProductoId(v); setError("") }}>
+                <SelectTrigger><SelectValue placeholder="Selecciona un producto" /></SelectTrigger>
+                <SelectContent>
+                  {productos.map(p => <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>)}
+                </SelectContent>
+              </Select>
             )}
-
-            {/* Producto */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Producto</label>
-              {productos.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic">No hay productos — créalos en la pestaña Productos</p>
-              ) : (
-                <Select value={productoId} onValueChange={v => { setProductoId(v); setError("") }}>
-                  <SelectTrigger><SelectValue placeholder="Selecciona un producto" /></SelectTrigger>
-                  <SelectContent>
-                    {productos.map(p => <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            {/* Condición — Flyweight */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Condición <span className="normal-case text-muted-foreground/40">(Flyweight)</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {condiciones.map(c => (
-                  <button key={c} onClick={() => setCondicion(c)}
-                    className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                      condicion === c ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"
-                    }`}>{c}</button>
-                ))}
-              </div>
-            </div>
-
-            {/* Estrategia — Strategy */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Tipo de análisis <span className="normal-case text-muted-foreground/40">(Strategy)</span>
-              </label>
-              <div className="flex flex-col gap-2">
-                {estrategias.map(e => {
-                  const meta = ESTRATEGIA_META[e.estrategiaKey]
-                  const col  = COLORES[e.estrategiaKey]
-                  const sel  = estratKey === e.estrategiaKey
-                  return (
-                    <button key={e.estrategiaKey} onClick={() => setEstratKey(e.estrategiaKey)}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${sel ? `${col.border} ${col.bg}` : "border-border"}`}>
-                      <span className="text-xl">{meta.icon}</span>
-                      <div>
-                        <p className={`text-sm font-semibold ${sel ? col.text : "text-foreground"}`}>{e.nombre}</p>
-                        <p className="text-xs text-muted-foreground">{meta.desc}</p>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Progreso — Observer */}
-            {loading && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs text-muted-foreground font-mono">
-                  <span>{progresoMsg}</span><span>{progreso}%</span>
-                </div>
-                <Progress value={progreso} className="h-1.5" />
-              </div>
-            )}
-
-            {error && (
-              <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
-                ⚠ {error}
-              </p>
-            )}
-
-            <Button onClick={analizar} disabled={loading || productos.length === 0} className="w-full">
-              {loading ? "Procesando..." : "Analizar →"}
-            </Button>
           </div>
 
-          {/* Panel de patrones */}
-          <PatronesPanel fw={fw} />
+          {/* Condición */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Condición</label>
+            <div className="flex flex-wrap gap-2">
+              {condiciones.map(c => (
+                <button key={c} onClick={() => setCondicion(c)}
+                  className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                    condicion === c ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"
+                  }`}>{c}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Estrategia */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tipo de análisis</label>
+            <div className="flex flex-col gap-2">
+              {estrategias.map(e => {
+                const meta = ESTRATEGIA_META[e.estrategiaKey]
+                const col  = COLORES[e.estrategiaKey]
+                const sel  = estratKey === e.estrategiaKey
+                return (
+                  <button key={e.estrategiaKey} onClick={() => setEstratKey(e.estrategiaKey)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${sel ? `${col.border} ${col.bg}` : "border-border"}`}>
+                    <span className="text-xl">{meta.icon}</span>
+                    <div>
+                      <p className={`text-sm font-semibold ${sel ? col.text : "text-foreground"}`}>{e.nombre}</p>
+                      <p className="text-xs text-muted-foreground">{meta.desc}</p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Progreso */}
+          {loading && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs text-muted-foreground font-mono">
+                <span>{progresoMsg}</span><span>{progreso}%</span>
+              </div>
+              <Progress value={progreso} className="h-1.5" />
+            </div>
+          )}
+
+          {error && (
+            <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+              ⚠ {error}
+            </p>
+          )}
+
+          <Button onClick={analizar} disabled={loading || productos.length === 0} className="w-full">
+            {loading ? "Procesando..." : "Analizar →"}
+          </Button>
         </div>
 
       ) : resultado && (
-        /* Resultado */
         <div className="space-y-6">
           <div className={`rounded-xl border p-5 ${colorActual.border} ${colorActual.bg}`}>
             <div className="flex items-center gap-3 mb-4">
@@ -282,7 +260,7 @@ export function RecomendacionesTab({
               <div>
                 <p className={`font-bold text-lg ${colorActual.text}`}>{resultado.estrategiaNombre}</p>
                 <p className="text-xs text-muted-foreground font-mono">
-                  Builder · confianza {resultado.confianzaPromedio}% · {resultado.procesadoEnMs}ms
+                  confianza {resultado.confianzaPromedio}% · {resultado.procesadoEnMs}ms
                   {guardadoOk && <span className="text-emerald-400 ml-2">✓ guardado en DB</span>}
                   {guardando && <span className="ml-2">guardando...</span>}
                 </p>
@@ -313,10 +291,10 @@ export function RecomendacionesTab({
             </div>
           </div>
 
-          {/* Feedback — Observer */}
+          {/* Feedback */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Feedback <span className="text-xs font-normal text-muted-foreground">(Observer)</span></CardTitle>
+              <CardTitle className="text-base">Feedback</CardTitle>
             </CardHeader>
             <CardContent>
               {feedback[resultado.id] ? (
@@ -338,12 +316,10 @@ export function RecomendacionesTab({
         </div>
       )}
 
-      {/* Historial en memoria — Observer */}
+      {/* Historial en memoria */}
       {historial.length > 0 && (
         <div className="space-y-3">
-          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            Historial · Observer actualiza en tiempo real
-          </p>
+          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Historial</p>
           {historial.map(r => {
             const col  = COLORES[r.estrategiaKey] ?? COLORES.reutilizar
             const meta = ESTRATEGIA_META[r.estrategiaKey]
@@ -361,14 +337,14 @@ export function RecomendacionesTab({
         </div>
       )}
 
-      {/* Recomendaciones guardadas en DB — Entidad 4 */}
+      {/* Recomendaciones guardadas en DB */}
       {recomendacionesPrevias.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
             Guardadas en base de datos ({recomendacionesPrevias.length})
           </p>
           {recomendacionesPrevias.map(r => {
-            const col = COLORES[r.estrategia_key] ?? COLORES.reutilizar
+            const col  = COLORES[r.estrategia_key] ?? COLORES.reutilizar
             const meta = ESTRATEGIA_META[r.estrategia_key]
             return (
               <div key={r.id} className={`flex gap-3 items-center p-3 rounded-xl border ${col.border} bg-muted/20`}>
@@ -383,34 +359,6 @@ export function RecomendacionesTab({
           })}
         </div>
       )}
-    </div>
-  )
-}
-
-function PatronesPanel({ fw }: { fw: { size: number; keys: string[] } }) {
-  const items = [
-    { icon: "🏗", nombre: "Builder",    tipo: "Creacional",     desc: "Construye RecomendacionResultado paso a paso. build() lanza error si falta algún campo.", archivo: "lib/patterns/builder.ts" },
-    { icon: "🪶", nombre: "Flyweight",  tipo: "Estructural",    desc: `Datos compartidos sin duplicar. Cache activo: ${fw.size} objeto${fw.size !== 1 ? "s" : ""}.`, archivo: "lib/patterns/flyweight.ts" },
-    { icon: "⚡", nombre: "Strategy",   tipo: "Comportamiento", desc: "Reutilizar / Transformar / Reconfigurar — mismo método generar(), algoritmos distintos.", archivo: "lib/patterns/strategy.ts" },
-    { icon: "👁", nombre: "Observer",   tipo: "Comportamiento", desc: "ScanObserver emite progreso parcial y completo. useScanObserver() suscribe componentes.", archivo: "lib/patterns/observer.ts" },
-  ]
-  return (
-    <div className="space-y-3">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Patrones activos</p>
-      {items.map(p => (
-        <Card key={p.nombre}>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">{p.icon}</span>
-              <div><CardTitle className="text-sm">{p.nombre}</CardTitle><p className="text-xs text-muted-foreground">{p.tipo}</p></div>
-            </div>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-2">
-            <CardDescription className="text-xs leading-relaxed">{p.desc}</CardDescription>
-            <code className="text-xs text-muted-foreground/60 font-mono block">{p.archivo}</code>
-          </CardContent>
-        </Card>
-      ))}
     </div>
   )
 }
