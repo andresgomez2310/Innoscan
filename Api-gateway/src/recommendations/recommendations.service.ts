@@ -1,10 +1,4 @@
-// ══════════════════════════════════════════════════════════════
-// RecommendationsService — los 4 patrones convergen aquí:
-//   Flyweight  → TransformationType desde cache (sin query DB)
-//   Strategy   → algoritmo seleccionado por strategyKey
-//   Builder    → construye resultado validado paso a paso
-//   Observer   → notifica parcial (25%, 70%) y completo (100%)
-// ══════════════════════════════════════════════════════════════
+
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { IsUUID, IsString, IsOptional } from 'class-validator';
 import { PrismaService }        from '../prisma/prisma.service';

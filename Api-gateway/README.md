@@ -1,4 +1,4 @@
-# InnoScan Backend — NestJS + Prisma + PostgreSQL
+# InnoScan Backend — NestJS + Supabase + PostgreSQL
 
 ## Patrones implementados
 | Patrón | Archivo | Descripción |

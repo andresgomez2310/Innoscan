@@ -1,0 +1,18 @@
+FROM node:20
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY src/prisma ./src/prisma
+
+RUN npm install
+
+ENV DATABASE_URL="postgresql://postgres:ASqGHbnmlk12@db.qdlvzfpdmsxnrerienuv.supabase.co:5432/postgres"
+
+RUN npx prisma generate --schema=src/prisma/schema.prisma
+
+COPY . .
+
+EXPOSE 3001
+
+CMD ["npm", "run", "start:dev"]
