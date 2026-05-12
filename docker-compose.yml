@@ -40,6 +40,17 @@ services:
     networks:
       - innoscan-network
 
+  catalog-service:
+    build: ./services/catalog-service
+    container_name: innoscan-catalog-service
+    env_file:
+      - ./api-gateway/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - innoscan-network
+
   frontend:
     build: ./frontend
     container_name: innoscan-frontend
