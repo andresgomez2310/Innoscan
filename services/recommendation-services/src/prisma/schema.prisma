@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Scan {
+  id          String   @id @default(uuid())
+  itemName    String
+  condition   String
+  status      String
+  createdAt   DateTime @default(now())
+
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  recommendations RecommendationResult[]
+}
+
+model RecommendationResult {
+  id              String   @id @default(uuid())
+  scanId          String
+  strategyName    String
+  recommendations Json
+  createdAt       DateTime @default(now())
+
+  scan Scan @relation(fields: [scanId], references: [id])
+}
+
+model Category {
+  id    String @id @default(uuid())
+  label String
+
+  scans Scan[]
+}
+
+model TransformationType {
+  id          String @id @default(uuid())
+  name        String
+  strategyKey String
+}

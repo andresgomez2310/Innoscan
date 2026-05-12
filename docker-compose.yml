@@ -1,31 +1,57 @@
 version: '3.9'
 
 services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: innoscan-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - innoscan-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
-  backend:
-    build: ./backend
-
-    container_name: innoscan-backend
-
+  api-gateway:
+    build: ./api-gateway
+    container_name: innoscan-api-gateway
     ports:
       - "3001:3001"
-
     env_file:
-      - ./backend/.env
+      - ./api-gateway/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - innoscan-network
+
+  recommendation-service:
+    build: ./services/recommendation-services
+    container_name: innoscan-recommendation-service
+    env_file:
+      - ./api-gateway/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - innoscan-network
 
   frontend:
     build: ./frontend
-
     container_name: innoscan-frontend
-
     ports:
       - "3000:3000"
-
-    env_file:
-      - ./frontend/.env.local
-
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:3001
-
     depends_on:
-      - backend
+      - api-gateway
+    networks:
+      - innoscan-network
+
+networks:
+  innoscan-network:
+    driver: bridge
