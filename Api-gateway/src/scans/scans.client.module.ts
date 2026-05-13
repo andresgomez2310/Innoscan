@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
-import { RecommendationsController } from './recommendations.controller';
-import { RecommendationsClientService } from './recommendations.client.service';
+import { ScansClientService } from './scans.client.service';
 
 @Module({
   imports: [
@@ -17,8 +16,7 @@ import { RecommendationsClientService } from './recommendations.client.service';
       },
     ]),
   ],
-  controllers: [RecommendationsController],
-  providers: [RecommendationsClientService],
-  exports: [RecommendationsClientService],
+  providers: [ScansClientService],
+  exports: [ScansClientService],
 })
-export class RecommendationsModule {}
+export class ScansClientModule {}

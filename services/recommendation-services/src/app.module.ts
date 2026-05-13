@@ -1,20 +1,19 @@
-import { Module } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
-
-import { PrismaModule } from './prisma/prisma.module'
-import { RecommendationsModule } from './recommendations/recommendations.module'
-import { EventEmitterModule } from '@nestjs/event-emitter'
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { PrismaModule } from './prisma/prisma.module';
+import { SharedModule } from './shared/shared.module';
+import { RecommendationsModule } from './recommendations/recommendations.module';
+import { ScansModule } from './scans/scans.module';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
-
     PrismaModule,
-
+    SharedModule,
     RecommendationsModule,
+    ScansModule,
   ],
 })
 export class AppModule {}

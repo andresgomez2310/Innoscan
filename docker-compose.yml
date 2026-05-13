@@ -51,6 +51,18 @@ services:
     networks:
       - innoscan-network
 
+  # NUEVO SERVICIO AGREGADO:
+  feedback-service:
+    build: ./services/feedback-service
+    container_name: innoscan-feedback-service
+    env_file:
+      - ./api-gateway/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - innoscan-network
+
   frontend:
     build: ./frontend
     container_name: innoscan-frontend

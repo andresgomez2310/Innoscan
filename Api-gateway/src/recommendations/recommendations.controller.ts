@@ -1,29 +1,12 @@
-// recommendations.controller.ts
-
-import {
-  Controller,
-  Post,
-  Get,
-  Param,
-  Body,
-  Query,
-  ParseUUIDPipe,
-} from '@nestjs/common';
-
-import {
-  RecommendationsService,
-  GenerateRecommendationsDto,
-} from './recommendations.service';
+import { Controller, Post, Get, Param, Body, Query } from '@nestjs/common';
+import { RecommendationsClientService } from './recommendations.client.service';
 
 @Controller('recommendations')
 export class RecommendationsController {
-
-  constructor(
-    private readonly service: RecommendationsService,
-  ) {}
+  constructor(private readonly service: RecommendationsClientService) {}
 
   @Post('generate')
-  generate(@Body() dto: GenerateRecommendationsDto) {
+  generate(@Body() dto: any) {
     return this.service.generate(dto);
   }
 
@@ -36,9 +19,7 @@ export class RecommendationsController {
   }
 
   @Get(':id')
-  findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }
 }

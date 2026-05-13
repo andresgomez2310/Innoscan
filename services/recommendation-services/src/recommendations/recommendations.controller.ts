@@ -1,44 +1,23 @@
-// recommendations.controller.ts
+import { Controller } from '@nestjs/common';
+import { MessagePattern, Payload } from '@nestjs/microservices';
+import { RecommendationsService, GenerateRecommendationsDto } from './recommendations.service';
 
-import {
-  Controller,
-  Post,
-  Get,
-  Param,
-  Body,
-  Query,
-  ParseUUIDPipe,
-} from '@nestjs/common';
-
-import {
-  RecommendationsService,
-  GenerateRecommendationsDto,
-} from './recommendations.service';
-
-@Controller('recommendations')
+@Controller()
 export class RecommendationsController {
+  constructor(private readonly service: RecommendationsService) {}
 
-  constructor(
-    private readonly service: RecommendationsService,
-  ) {}
-
-  @Post('generate')
-  generate(@Body() dto: GenerateRecommendationsDto) {
+  @MessagePattern('recommendations.generate')
+  generate(@Payload() dto: GenerateRecommendationsDto) {
     return this.service.generate(dto);
   }
 
-  @Get()
-  findAll(
-    @Query('transformationTypeId') typeId?: string,
-    @Query('scanId') scanId?: string,
-  ) {
-    return this.service.findAll(typeId, scanId);
+  @MessagePattern('recommendations.findAll')
+  findAll(@Payload() payload: { transformationTypeId?: string; scanId?: string }) {
+    return this.service.findAll(payload?.transformationTypeId, payload?.scanId);
   }
 
-  @Get(':id')
-  findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    return this.service.findOne(id);
+  @MessagePattern('recommendations.findOne')
+  findOne(@Payload() payload: { id: string }) {
+    return this.service.findOne(payload.id);
   }
 }
