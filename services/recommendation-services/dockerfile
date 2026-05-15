@@ -1,15 +1,24 @@
-FROM node:20
+# Usa una imagen oficial de Node
+FROM node:20-alpine
 
+# Crear carpeta de la app
 WORKDIR /app
 
+# Copiar archivos de dependencias PRIMERO
 COPY package*.json ./
 
+# Instalar dependencias dentro de Docker
 RUN npm install
 
+# AHORA copiar el resto del código (incluyendo la carpeta src)
 COPY . .
 
+# Generar el cliente de Prisma
 RUN npx prisma generate --schema=src/prisma/schema.prisma
+
+# Compilar el proyecto (si usas NestJS)
+RUN npm run build
 
 EXPOSE 3002
 
-CMD ["npm", "run", "start:dev"]
+CMD ["npm", "run", "start:prod"]

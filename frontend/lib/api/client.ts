@@ -58,7 +58,12 @@ export const apiCategories      = () => request<Category[]>("/api/v1/categories"
 export const apiTransformTypes  = () => request<TransformType[]>("/api/v1/transformation-types")
 
 // Recomendaciones
-export const apiRecommendGenerate = (body: { scanId: string; transformationTypeId: string; itemName?: string }) =>
+export const apiRecommendGenerate = (body: { 
+  scanId: string; 
+  transformationTypeId: string; 
+  itemName?: string;
+  imageBase64?: string;  // <- agregar esto
+}) =>
   request<RecResult>("/api/v1/recommendations/generate", { method: "POST", body: JSON.stringify(body) })
 export const apiRecommendList   = () => request<RecResult[]>("/api/v1/recommendations")
 

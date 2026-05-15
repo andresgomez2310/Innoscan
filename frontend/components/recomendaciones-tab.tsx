@@ -1,459 +1,290 @@
 "use client"
 
 import React, { useState, useRef, useEffect } from "react"
-import { Button }    from "@/components/ui/button"
-import { Badge }     from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Progress }  from "@/components/ui/progress"
+import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
+import { Upload, Sparkles, Loader2, RefreshCw, Wand2, CheckCircle2, AlertCircle } from "lucide-react"
 
-// Patrones de diseño
-import { CONDICION_TAGS, ESFUERZO_LABELS, ESTRATEGIA_META, FlyweightCache, type CondicionTag } from "@/lib/patterns/flyweight"
-import { crearEstrategia, todasLasEstrategias } from "@/lib/patterns/strategy"
-import { RecomendacionResultadoBuilder, type RecomendacionResultado } from "@/lib/patterns/builder"
-import { ScanObserver, useScanObserver } from "@/lib/patterns/observer"
+import { FlyweightCache, CONDICION_TAGS } from "@/lib/patterns/flyweight"
+import { RecomendacionResultadoBuilder } from "@/lib/patterns/builder"
+import { useScanObserver } from "@/lib/patterns/observer"
+import { apiTransformTypes, apiEscaneoCreate, apiRecommendGenerate } from "@/lib/api/client"
 
-// Cliente backend
-import {
-  apiCategories, apiTransformTypes, apiEscaneoCreate as apiScanCreate,
-  apiRecommendGenerate, apiFeedbackCreate,
-  type Category, type TransformType,
-} from "@/lib/api/client"
-
-interface Producto { id: string; nombre: string; categoria: string | null }
-interface RecDB {
-  id: string; producto_id: string; producto_nombre: string
-  estrategia_key: string; estrategia_nombre: string
-  confianza_promedio: number; estado: string; created_at: string
+const THEME = {
+  bgCard: "bg-[#0D1117]",
+  border: "border-white/10",
+  accent: "text-[#00FF66]",
+  accentBg: "bg-[#00FF66]/10",
 }
 
-const COLORES: Record<string, { border: string; bg: string; text: string; badge: string }> = {
-  reutilizar:   { border: "border-emerald-500/30", bg: "bg-emerald-500/10", text: "text-emerald-400", badge: "bg-emerald-500/20 text-emerald-300" },
-  transformar:  { border: "border-yellow-500/30",  bg: "bg-yellow-500/10",  text: "text-yellow-400",  badge: "bg-yellow-500/20 text-yellow-300" },
-  reconfigurar: { border: "border-pink-500/30",    bg: "bg-pink-500/10",    text: "text-pink-400",    badge: "bg-pink-500/20 text-pink-300" },
-}
-
-// strategyKey frontend → strategyKey backend
-const STRATEGY_MAP: Record<string, string> = {
-  reutilizar: "reuse", transformar: "transform", reconfigurar: "reconfigure",
-}
-
-async function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
-
-export function RecomendacionesTab({
-  productos,
-  recomendacionesPrevias = [],
-}: {
-  productos: Producto[]
-  recomendacionesPrevias?: RecDB[]
-}) {
-  const condiciones = CONDICION_TAGS
-  const estrategias = todasLasEstrategias()
-  const esfuerzos   = ESFUERZO_LABELS
-
-  // Catálogo del backend (Flyweight)
-  const [categories,  setCategories]  = useState<Category[]>([])
-  const [transTypes,  setTransTypes]  = useState<TransformType[]>([])
-  const [backendOk,   setBackendOk]   = useState<boolean | null>(null)
-
-  // Formulario
-  const [productoId,  setProductoId]  = useState("")
-  const [condicion,   setCondicion]   = useState<CondicionTag>("bueno")
-  const [estratKey,   setEstratKey]   = useState("reutilizar")
-  const [imagen,      setImagen]      = useState<{ preview: string; nombre: string } | null>(null)
-
-  // Estado del análisis
-  const [loading,     setLoading]     = useState(false)
-  const [progreso,    setProgreso]    = useState(0)
+export function RecomendacionesTab({ productos }: { productos: any[] }) {
+  // --- Estados ---
+  const [loading, setLoading] = useState(false)
+  const [progreso, setProgreso] = useState(0)
   const [progresoMsg, setProgresoMsg] = useState("")
-  const [error,       setError]       = useState("")
+  const [productoId, setProductoId] = useState("")
+  const [condicion, setCondicion] = useState("bueno")
+  const [tipoId, setTipoId] = useState("1") 
+  const [tipos, setTipos] = useState<any[]>([])
+  const [imagen, setImagen] = useState<{ file: File; preview: string; base64: string } | null>(null)
+  const [resultado, setResultado] = useState<any>(null)
+  const [error, setError] = useState("")
 
-  // Resultado
-  const [resultado,   setResultado]   = useState<RecomendacionResultado | null>(null)
-  const [backendId,   setBackendId]   = useState<string | null>(null)
-  const [guardadoOk,  setGuardadoOk]  = useState(false)
-  const [historial,   setHistorial]   = useState<RecomendacionResultado[]>([])
-  const [feedback,    setFeedback]    = useState<Record<string, number>>({})
-  const [vista,       setVista]       = useState<"formulario" | "resultado">("formulario")
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // ── Cargar catálogo del backend al montar (Flyweight) ────────
+  // --- Observer: Progreso de la IA ---
+  useScanObserver<{ progress: number; message: string }>("escaneo:progreso", (data) => {
+    setProgreso(data.progress)
+    setProgresoMsg(data.message)
+  })
+
+  // --- Cargar tipos de estrategia ---
   useEffect(() => {
-    Promise.all([apiCategories(), apiTransformTypes()])
-      .then(([cats, types]) => {
-        setCategories(cats)
-        setTransTypes(types)
-        // guardar en FlyweightCache
-        cats.forEach(c  => FlyweightCache.set(`cat_${c.id}`, c))
+    apiTransformTypes().then(types => {
+      setTipos(types)
+      if (types && types.length > 0) {
+        if (!tipoId) setTipoId(types[0].id)
         types.forEach(t => FlyweightCache.set(`ttype_${t.strategyKey}`, t))
-        setBackendOk(true)
-      })
-      .catch(() => setBackendOk(false))
+      }
+    })
   }, [])
 
-  // ── Observer: suscribir a eventos de progreso ────────────────
-  useScanObserver<{ pct: number; msg: string }>("escaneo:progreso", ({ pct, msg }) => {
-    setProgreso(pct); setProgresoMsg(msg)
-  })
-  useScanObserver<RecomendacionResultado>("escaneo:completo", (r) => {
-    setHistorial(prev => [r, ...prev])
-  })
+  // --- NUEVA FUNCIÓN: Limpiar para nuevo análisis ---
+  const nuevaConsulta = () => {
+    setResultado(null)
+    setImagen(null)
+    setProductoId("")
+    setError("")
+    setProgreso(0)
+    setProgresoMsg("")
+    setCondicion("bueno")
+  }
 
-  const handleImagen = (file: File | null) => {
+  // --- Manejo y Optimización de Imagen ---
+  const handleImagen = (file: File | undefined) => {
     if (!file) return
-    if (!file.type.startsWith("image/")) { setError("Debe ser una imagen JPG, PNG o WEBP"); return }
+    if (!file.type.startsWith("image/")) return setError("Formato no válido")
+    
     const reader = new FileReader()
-    reader.onload = e => { setImagen({ preview: e.target?.result as string, nombre: file.name }); setError("") }
+    reader.onload = (event) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        // Redimensionar para ahorrar RAM en IA local
+        const scale = Math.min(1, 800 / Math.max(img.width, img.height))
+        canvas.width = img.width * scale
+        canvas.height = img.height * scale
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+        const jpegBase64 = canvas.toDataURL('image/jpeg', 0.8)
+        setImagen({ 
+          file, 
+          preview: jpegBase64,
+          base64: jpegBase64 
+        })
+        setError("")
+      }
+      img.src = event.target?.result as string
+    }
     reader.readAsDataURL(file)
   }
 
-  // ── Flujo principal: 4 patrones en secuencia ─────────────────
-  const analizar = async () => {
-    if (!imagen)     { setError("Adjunta una imagen del producto"); return }
-    if (!productoId) { setError("Selecciona un producto"); return }
+  // --- Flujo Principal ---
+  const generarInnovacion = async () => {
+    if (!productoId) return setError("Selecciona un producto del catálogo")
+    if (!imagen) return setError("Sube una foto para el análisis de IA")
 
-    setError(""); setLoading(true); setProgreso(0); setGuardadoOk(false); setBackendId(null)
-    const producto = productos.find(p => p.id === productoId)!
+    setLoading(true)
+    setError("")
+    setProgreso(10)
+    setProgresoMsg("Registrando escaneo...")
 
     try {
-      // ── 1. OBSERVER: inicio ──────────────────────────────────
-      ScanObserver.emit("escaneo:progreso", { pct: 15, msg: "Iniciando análisis..." })
-      await sleep(200)
+      const producto = productos.find(p => p.id === productoId)
 
-      // ── 2. FLYWEIGHT: obtener categoría y tipo desde cache ───
-      ScanObserver.emit("escaneo:progreso", { pct: 25, msg: "Obteniendo catálogo (Flyweight)..." })
+      const scan = await apiEscaneoCreate({
+        itemName: producto.nombre,
+        condition: condicion,
+        categoryId: producto.id,
+      })
 
-      // Buscar el tipo de transformación que corresponde a la estrategia elegida
-      const backendKey = STRATEGY_MAP[estratKey] ?? "reuse"
-      let tType = FlyweightCache.get<TransformType>(`ttype_${backendKey}`)
-      if (!tType && transTypes.length > 0) {
-        tType = transTypes.find(t => t.strategyKey === backendKey) ?? transTypes[0]
-      }
+      setProgreso(40)
+      setProgresoMsg("Analizando con IA Local...")
 
-      // Obtener categoría del producto o usar la primera disponible
-      const cat = categories[0]
+      const response = await apiRecommendGenerate({
+        scanId: scan.id,
+        transformationTypeId: tipoId, 
+        itemName: producto.nombre,
+        imageBase64: imagen.base64 
+      })
 
-      // Guardar producto en cache Flyweight
-      if (!FlyweightCache.has(`producto_${productoId}`))
-        FlyweightCache.set(`producto_${productoId}`, producto)
-
-      await sleep(200)
-
-      // ── 3. BACKEND: crear scan en Railway ────────────────────
-      ScanObserver.emit("escaneo:progreso", { pct: 35, msg: "Registrando escaneo en servidor..." })
-      let scanId: string | null = null
-      try {
-        const scan = await apiScanCreate({
-          itemName:    producto.nombre,
-          condition:   condicion,
-          categoryId:  cat?.id ?? tType?.id ?? "",
-          description: `Análisis de ${producto.nombre} en condición: ${condicion}`,
-        })
-        scanId = scan.id
-      } catch (e) {
-        console.warn("[Backend] apiScanCreate falló:", (e as Error).message)
-      }
-
-      // ── 4. STRATEGY: ejecutar algoritmo ─────────────────────
-      ScanObserver.emit("escaneo:progreso", { pct: 55, msg: `Aplicando estrategia "${estratKey}" (Strategy)...` })
-      await sleep(300)
-      const estrategia = crearEstrategia(estratKey)
-      const items = estrategia.generar(producto.nombre, condicion)
-
-      // ── 5. BACKEND: generate en Railway ─────────────────────
-      ScanObserver.emit("escaneo:progreso", { pct: 70, msg: "Generando recomendaciones en servidor..." })
-      let backendResultId: string | null = null
-      if (scanId && tType) {
-        try {
-          const generated = await apiRecommendGenerate({
-            scanId,
-            transformationTypeId: tType.id,
-            itemName: producto.nombre,
-          })
-          backendResultId = generated.id
-          setBackendId(backendResultId)
-        } catch (e) {
-          console.warn("[Backend] apiRecommendGenerate falló:", (e as Error).message)
-        }
-      }
-
-      // ── 6. BUILDER: construir resultado validado ─────────────
-      ScanObserver.emit("escaneo:progreso", { pct: 88, msg: "Construyendo resultado (Builder)..." })
-      await sleep(200)
-      const res = new RecomendacionResultadoBuilder()
+      // Corregido: Agregada la condición al Builder
+      const builderRes = new RecomendacionResultadoBuilder()
         .withProducto(producto.id, producto.nombre)
-        .withCondicion(condicion)
-        .withEstrategia(estratKey, estrategia.nombre)
-        .withRecomendaciones(items)
+        .withCondicion(condicion) 
+        .withEstrategia("AI_LOCAL", "IA Local Llava")
+        .withRecomendaciones(response.recommendations || [])
         .build()
 
-      // ── 7. OBSERVER: notificar completado ────────────────────
-      ScanObserver.emit("escaneo:progreso", { pct: 100, msg: "¡Análisis completado!" })
-      ScanObserver.emit("escaneo:completo", res)
-      await sleep(150)
-
-      setResultado(res)
-      setGuardadoOk(true)
-      setVista("resultado")
-
-    } catch (e: unknown) {
-      setError((e as Error).message ?? "Error inesperado")
+      setResultado(builderRes)
+      setProgreso(100)
+      setProgresoMsg("Completado")
+    } catch (e: any) {
+      console.error("Error:", e)
+      setError("Error interno: La IA local tardó demasiado o se quedó sin memoria.")
     } finally {
       setLoading(false)
     }
   }
 
-  // ── Feedback → Observer + Backend ───────────────────────────
-  const darFeedback = async (resultadoId: string, stars: number) => {
-    setFeedback(prev => ({ ...prev, [resultadoId]: stars }))
-    ScanObserver.emit("feedback:enviado", { resultadoId, stars })
-    if (backendId) {
-      try {
-        await apiFeedbackCreate({ resultId: backendId, rating: stars, comment: `Feedback ${stars}/5` })
-      } catch (e) {
-        console.warn("[Backend] apiFeedbackCreate falló:", (e as Error).message)
-      }
-    }
-  }
-
-  const fw = FlyweightCache.stats()
-  const colorActual = COLORES[estratKey] ?? COLORES.reutilizar
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-xl font-semibold">Recomendaciones</h2>
-          <p className="text-sm text-muted-foreground">Analiza un producto y obtén recomendaciones de reutilización</p>
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          <Badge variant="outline" className="text-xs font-mono">🪶 Flyweight: {fw.size} cached</Badge>
-          {backendOk === true  && <Badge variant="outline" className="text-xs text-emerald-500">✓ Backend conectado</Badge>}
-          {backendOk === false && <Badge variant="outline" className="text-xs text-yellow-500">⚠ Backend sin conexión — modo local</Badge>}
-        </div>
-      </div>
-
-      {vista === "formulario" ? (
-        <div className="max-w-lg space-y-5">
-
-          {/* Imagen */}
-          {!imagen ? (
-            <div onClick={() => fileRef.current?.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); handleImagen(e.dataTransfer.files[0]) }}
-              className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/30 p-10 cursor-pointer hover:border-primary/50 transition-colors">
-              <span className="text-4xl mb-3">📷</span>
-              <p className="text-sm font-medium">Adjunta imagen del producto</p>
-              <p className="text-xs text-muted-foreground mt-1">Arrastra o haz click · JPG · PNG · WEBP</p>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden"
-                onChange={e => handleImagen(e.target.files?.[0] ?? null)} />
+    <div className="grid lg:grid-cols-2 gap-8 animate-in fade-in duration-700">
+      
+      {/* COLUMNA IZQUIERDA: FORMULARIO */}
+      <div className="space-y-6">
+        <section className={`${THEME.bgCard} border ${THEME.border} rounded-3xl p-6 shadow-2xl space-y-6`}>
+          <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+            <div className={`p-2 rounded-lg ${THEME.accentBg}`}>
+              <Wand2 className={`h-5 w-5 ${THEME.accent}`} />
             </div>
-          ) : (
-            <div className="relative">
-              <img src={imagen.preview} alt="producto"
-                className="w-full max-h-52 object-cover rounded-xl border" />
-              <button onClick={() => setImagen(null)}
-                className="absolute top-2 right-2 bg-background/90 border text-xs px-2 py-1 rounded-md hover:bg-muted transition-colors">
-                ✕ cambiar
-              </button>
-              <span className="absolute bottom-2 left-2 bg-background/90 text-xs font-mono px-2 py-1 rounded-md truncate max-w-[80%]">
-                {imagen.nombre}
-              </span>
-            </div>
-          )}
-
-          {/* Producto */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Producto</label>
-            {productos.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic">No hay productos — créalos en la pestaña Productos</p>
-            ) : (
-              <Select value={productoId} onValueChange={v => { setProductoId(v); setError("") }}>
-                <SelectTrigger><SelectValue placeholder="Selecciona un producto" /></SelectTrigger>
-                <SelectContent>
-                  {productos.map(p => <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
+            <h3 className="text-lg font-bold text-white italic">Configuración</h3>
           </div>
 
-          {/* Condición — Flyweight */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Condición del producto
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {condiciones.map(c => (
-                <button key={c} onClick={() => setCondicion(c)}
-                  className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                    condicion === c
-                      ? "border-primary bg-primary/10 text-primary font-medium"
-                      : "border-border text-muted-foreground hover:border-muted-foreground"
-                  }`}>{c}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Estrategia — Strategy */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Tipo de análisis
-            </label>
-            <div className="flex flex-col gap-2">
-              {estrategias.map(e => {
-                const meta = ESTRATEGIA_META[e.estrategiaKey]
-                const col  = COLORES[e.estrategiaKey]
-                const sel  = estratKey === e.estrategiaKey
-                return (
-                  <button key={e.estrategiaKey} onClick={() => setEstratKey(e.estrategiaKey)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
-                      sel ? `${col.border} ${col.bg}` : "border-border hover:border-muted-foreground"
-                    }`}>
-                    <span className="text-xl">{meta.icon}</span>
-                    <div>
-                      <p className={`text-sm font-semibold ${sel ? col.text : "text-foreground"}`}>{e.nombre}</p>
-                      <p className="text-xs text-muted-foreground">{meta.desc}</p>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Progreso — Observer */}
-          {loading && (
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs text-muted-foreground font-mono">
-                <span>{progresoMsg}</span><span>{progreso}%</span>
+          {/* DROPZONE */}
+          <div onClick={() => fileRef.current?.click()} className={`relative group border-2 border-dashed ${THEME.border} rounded-2xl p-6 transition-all cursor-pointer hover:border-[#00FF66]/50 bg-black/20`}>
+            {imagen ? (
+              <div className="relative aspect-video rounded-xl overflow-hidden shadow-2xl">
+                <img src={imagen.preview} className="object-cover w-full h-full" alt="Preview" />
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <RefreshCw className="text-white h-8 w-8" />
+                </div>
               </div>
-              <Progress value={progreso} className="h-1.5" />
+            ) : (
+              <div className="flex flex-col items-center py-6">
+                <Upload className="text-slate-500 h-8 w-8 mb-3" />
+                <p className="text-sm font-bold text-slate-300">Subir fotografía</p>
+                <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest italic">Análisis Visual Requerido</p>
+              </div>
+            )}
+            <input type="file" ref={fileRef} className="hidden" onChange={e => handleImagen(e.target.files?.[0])} />
+          </div>
+
+          <div className="grid gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Producto</label>
+              <select value={productoId} onChange={e => setProductoId(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-[#00FF66] outline-none">
+                <option value="">Selecciona un producto...</option>
+                {productos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Condición</label>
+              <div className="flex flex-wrap gap-2">
+                {CONDICION_TAGS.map(c => (
+                  <button key={c} onClick={() => setCondicion(c)} className={`px-4 py-2 rounded-xl text-[10px] font-black border transition-all uppercase ${condicion === c ? "bg-[#00FF66] text-black border-[#00FF66]" : "bg-white/5 border-white/10 text-slate-400"}`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Estrategia Principal</label>
+              <div className="flex flex-wrap gap-2">
+                {tipos.map(t => (
+                  <button key={t.id} onClick={() => setTipoId(t.id)} className={`px-4 py-2 rounded-xl text-[10px] font-black border transition-all uppercase ${tipoId === t.id ? "bg-[#00FF66] text-black border-[#00FF66]" : "bg-white/5 border-white/10 text-slate-400"}`}>
+                    {(t.label || t.strategyKey).replace('Strategy', '')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <Button onClick={generarInnovacion} disabled={loading || !productoId || !imagen} className="w-full h-14 bg-[#00FF66] hover:bg-[#00D154] text-black font-black rounded-2xl shadow-[0_10px_30px_rgba(0,255,102,0.2)]">
+            {loading ? <Loader2 className="animate-spin mr-2" /> : <Sparkles className="mr-2 h-5 w-5" />}
+            {loading ? "IA ANALIZANDO..." : "GENERAR RECOMENDACIÓN IA"}
+          </Button>
+
+          {loading && (
+            <div className="space-y-3">
+              <div className="flex justify-between text-[10px] font-black text-[#00FF66] uppercase tracking-widest">
+                <span>{progresoMsg}</span>
+                <span>{progreso}%</span>
+              </div>
+              <Progress value={progreso} className="h-1 bg-white/5" />
             </div>
           )}
 
           {error && (
-            <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
-              ⚠ {error}
-            </p>
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              <AlertCircle size={14} />
+              {error}
+            </div>
           )}
+        </section>
+      </div>
 
-          <Button onClick={analizar} disabled={loading || productos.length === 0} className="w-full">
-            {loading ? "Procesando..." : "Analizar →"}
-          </Button>
-        </div>
-
-      ) : resultado && (
-        /* Vista de resultado */
-        <div className="space-y-6 max-w-lg">
-          <div className={`rounded-xl border p-5 ${colorActual.border} ${colorActual.bg}`}>
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-2xl">{ESTRATEGIA_META[resultado.estrategiaKey]?.icon}</span>
-              <div>
-                <p className={`font-bold text-lg ${colorActual.text}`}>{resultado.estrategiaNombre}</p>
-                <p className="text-xs text-muted-foreground font-mono">
-                  Confianza {resultado.confianzaPromedio}% · {resultado.procesadoEnMs}ms
-                  {guardadoOk && <span className="text-emerald-400 ml-2">✓ guardado</span>}
-                  {backendId  && <span className="text-muted-foreground/40 ml-1">· Railway #{backendId.slice(0,8)}</span>}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-4 mb-5 items-center">
-              {imagen && <img src={imagen.preview} alt="" className="w-20 h-20 object-cover rounded-lg border flex-shrink-0" />}
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Producto analizado</p>
-                <p className="font-bold text-lg">{resultado.productoNombre}</p>
-                <p className="text-xs text-muted-foreground capitalize">{resultado.condicion}</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {resultado.recomendaciones.map((rec, i) => (
-                <div key={i} className="flex gap-3 items-start bg-background/50 rounded-lg p-3 border">
-                  <div className={`flex-shrink-0 w-11 h-11 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${colorActual.badge}`}>
-                    {rec.confianza}%
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium leading-snug">{rec.titulo}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{esfuerzos[rec.esfuerzo]}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {/* COLUMNA DERECHA: RESULTADOS */}
+      <div className="space-y-6">
+        {!resultado && !loading && (
+          <div className="h-full min-h-[450px] border-2 border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center text-slate-600 bg-black/10">
+            <Sparkles className="h-12 w-12 mb-4 opacity-5" />
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-20 text-center">Esperando Análisis</p>
           </div>
+        )}
 
-          {/* Feedback → Observer + Railway */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Feedback</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {feedback[resultado.id] ? (
-                <p className="text-sm text-emerald-400">★ {feedback[resultado.id]}/5 — gracias por tu feedback</p>
-              ) : (
-                <div className="flex gap-2">
-                  {[1,2,3,4,5].map(s => (
-                    <button key={s} onClick={() => darFeedback(resultado.id, s)}
-                      className="flex-1 py-2 rounded-lg border text-lg hover:border-yellow-400 hover:bg-yellow-400/10 hover:text-yellow-400 transition-all text-muted-foreground">
-                      ★
-                    </button>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {loading && !resultado && (
+          <div className="h-full min-h-[450px] flex flex-col items-center justify-center space-y-6 bg-black/20 rounded-3xl border border-white/5 shadow-inner">
+             <div className="relative">
+              <div className="h-24 w-24 border-4 border-[#00FF66]/10 border-t-[#00FF66] rounded-full animate-spin" />
+              <Sparkles className="absolute inset-0 m-auto h-8 w-8 text-[#00FF66] animate-pulse" />
+            </div>
+            <p className="text-[#00FF66] font-mono text-[10px] tracking-[0.4em] uppercase animate-pulse">Neural Engine Active</p>
+          </div>
+        )}
 
-          <Button variant="outline" onClick={() => { setVista("formulario"); setGuardadoOk(false) }} className="w-full">
-            ← Analizar otro
-          </Button>
-        </div>
-      )}
-
-      {/* Historial en memoria — Observer */}
-      {historial.length > 0 && (
-        <div className="space-y-3 max-w-lg">
-          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            Historial de esta sesión
-          </p>
-          {historial.map(r => {
-            const col  = COLORES[r.estrategiaKey] ?? COLORES.reutilizar
-            const meta = ESTRATEGIA_META[r.estrategiaKey]
-            return (
-              <div key={r.id} className={`flex gap-3 items-center p-3 rounded-xl border ${col.border}`}>
-                <span className="text-xl">{meta?.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{r.productoNombre}</p>
-                  <p className="text-xs text-muted-foreground">{r.estrategiaNombre} · {r.confianzaPromedio}% confianza</p>
-                </div>
-                <Badge variant="outline" className={`text-xs ${col.text}`}>{r.recomendaciones.length} recs</Badge>
+        {resultado && (
+          <div className="space-y-4 animate-in fade-in zoom-in-95 duration-500">
+            <div className="flex items-center justify-between mb-4">
+               <div className="flex items-center gap-2">
+                <CheckCircle2 className="text-[#00FF66] h-5 w-5" />
+                <h3 className="text-white font-black italic uppercase tracking-tighter text-lg">Resultados Obtenidos</h3>
               </div>
-            )
-          })}
-        </div>
-      )}
+              <Badge variant="outline" className="border-[#00FF66]/20 text-[#00FF66] font-mono text-[10px]">IA LOCAL</Badge>
+            </div>
 
-      {/* Recomendaciones guardadas en DB */}
-      {recomendacionesPrevias.length > 0 && (
-        <div className="space-y-2 max-w-lg">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
-            Guardadas en base de datos ({recomendacionesPrevias.length})
-          </p>
-          {recomendacionesPrevias.map(r => {
-            const col  = COLORES[r.estrategia_key] ?? COLORES.reutilizar
-            const meta = ESTRATEGIA_META[r.estrategia_key]
-            return (
-              <div key={r.id} className={`flex gap-3 items-center p-3 rounded-xl border ${col.border} bg-muted/20`}>
-                <span className="text-xl">{meta?.icon ?? "🔄"}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{r.producto_nombre}</p>
-                  <p className="text-xs text-muted-foreground">{r.estrategia_nombre} · {r.confianza_promedio}% confianza</p>
-                </div>
-                <Badge variant="secondary" className="text-xs">{r.estado}</Badge>
-              </div>
-            )
-          })}
-        </div>
-      )}
+            {resultado.recomendaciones?.map((rec: any, idx: number) => (
+              <ResultCard key={idx} title={rec.title} desc={rec.description} color={idx === 0 ? "emerald" : "blue"} />
+            ))}
+            
+            {/* BOTÓN DE LIMPIEZA INTEGRADO */}
+            <Button 
+              variant="ghost" 
+              onClick={nuevaConsulta} 
+              className="w-full text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] hover:text-[#00FF66] hover:bg-[#00FF66]/5 mt-4 py-8 rounded-2xl border border-dashed border-white/5"
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Limpiar y realizar nuevo análisis
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ResultCard({ title, desc, color }: any) {
+  const colors: any = {
+    emerald: "border-emerald-500/20 bg-emerald-500/5 text-emerald-400 shadow-[0_0_40px_rgba(16,185,129,0.05)]",
+    blue: "border-blue-500/20 bg-blue-500/5 text-blue-400 shadow-[0_0_40px_rgba(59,130,246,0.05)]",
+  }
+  return (
+    <div className={`p-6 rounded-3xl border ${colors[color]} backdrop-blur-md hover:scale-[1.02] transition-all duration-500 group`}>
+      <h4 className="font-black text-[10px] uppercase tracking-[0.3em] mb-4 opacity-40 group-hover:opacity-100 transition-opacity">{title}</h4>
+      <p className="text-slate-200 text-sm leading-relaxed font-medium italic">"{desc}"</p>
     </div>
   )
 }

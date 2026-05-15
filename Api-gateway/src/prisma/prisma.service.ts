@@ -1,22 +1,39 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
 export class PrismaService {
   private client: SupabaseClient;
+  private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    this.client = createClient(url, key);
+    // Intentar leer de múltiples fuentes (estándar de Backend o prefijo de Frontend)
+    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!url || !key) {
+      this.logger.error('❌ Error: No se encontraron las variables de entorno de Supabase.');
+      this.logger.warn('Asegúrate de configurar SUPABASE_URL y SUPABASE_KEY en tu docker-compose o archivo .env');
+    }
+
+    // Inicializar el cliente (usamos placeholders si no hay valores para evitar que el proceso se bloquee totalmente)
+    this.client = createClient(
+      url || 'https://placeholder-url.supabase.co', 
+      key || 'placeholder-key'
+    );
   }
 
+  // Getters para acceder a las tablas simulando Prisma
   get scan()                 { return new ScanTable(this.client); }
   get category()             { return new CategoryTable(this.client); }
   get transformationType()   { return new TransformationTypeTable(this.client); }
   get recommendationResult() { return new RecommendationResultTable(this.client); }
   get feedback()             { return new FeedbackTable(this.client); }
 }
+
+/** 
+ * Lógica de las tablas (Clases Wrapper)
+ */
 
 class ScanTable {
   constructor(private db: SupabaseClient) {}
@@ -44,7 +61,7 @@ class ScanTable {
   async findUnique({ where }: any) {
     const { data, error } = await this.db
       .from('escaneos').select('*, category:productos(*), results:recomendaciones(*)')
-      .eq('id', where.id).single();
+      .eq('id', where.id).maybeSingle(); // Usamos maybeSingle para evitar error si no hay dato
     if (error) return null;
     return this.mapScan(data);
   }
@@ -121,8 +138,8 @@ class RecommendationResultTable {
       estrategia_key:     data.transformationTypeId,
       estrategia_nombre:  data.strategyName ?? '',
       recomendaciones:    data.recommendations,
-      confianza_promedio: data.confidence,
-      procesado_en_ms:    data.processingTimeMs,
+      confianza_promedio: data.confidence || 0,
+      procesado_en_ms:    data.processingTimeMs || 0,
       estado:             data.status ?? 'COMPLETO',
     };
     const { data: row, error } = await this.db
@@ -141,7 +158,7 @@ class RecommendationResultTable {
 
   async findUnique({ where }: any) {
     const { data, error } = await this.db
-      .from('recomendaciones').select('*').eq('id', where.id).single();
+      .from('recomendaciones').select('*').eq('id', where.id).maybeSingle();
     if (error) return null;
     return this.mapResult(data);
   }
