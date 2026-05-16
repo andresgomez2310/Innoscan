@@ -9,11 +9,12 @@ export class RecommendationsController {
   constructor(private readonly service: RecommendationsService) {}
 
   @MessagePattern('recommendations.generate')
-  generate(@Payload() dto: GenerateRecommendationsDto) {
-    this.logger.log('generate called with: ' + JSON.stringify(dto));
-    return this.service.generate(dto);
-  }
+generate(@Payload() dto: any) {
+  this.logger.log('generate called with: ' + JSON.stringify(dto));
+  return this.service.generate(dto);
+}
 
+  
   @MessagePattern('recommendations.findAll')
   findAll(@Payload() payload: { transformationTypeId?: string; scanId?: string }) {
     this.logger.log('findAll called');
@@ -25,4 +26,5 @@ export class RecommendationsController {
     this.logger.log('findOne called with: ' + JSON.stringify(payload));
     return this.service.findOne(payload.id);
   }
+  
 }
