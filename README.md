@@ -35,3 +35,7 @@ Fue publicado en Vercel + Usando la base de datos Supabase
 | 🪶 Flyweight | `backend/src/shared/flyweight/flyweight.service.ts` |
 | ⚡ Strategy  | `backend/src/recommendations/strategies/` |
 | 👁 Observer  | `backend/src/shared/observer/` |
+
+
+
+
