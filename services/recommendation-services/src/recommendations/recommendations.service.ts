@@ -101,7 +101,7 @@ export class RecommendationsService {
     const base64Data = imageBase64.split(',')[1] || imageBase64;
 
     const payload = {
-      model: "llava",
+      model: "moondream",
       prompt: `Analiza el producto "${itemName}". ${instruccion}. 
                Sé breve (máximo 3 frases). Responde en español. 
                Responde ÚNICAMENTE con este formato JSON: {"descripcion": "tu idea"}.`,
