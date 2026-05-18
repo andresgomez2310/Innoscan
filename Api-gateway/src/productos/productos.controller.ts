@@ -1,7 +1,10 @@
 import { Controller, Get, Post, Delete, Param, Body, Query } from '@nestjs/common';
+import { UseGuards } from '@nestjs/common';
+import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { CatalogClientService } from '../catalog/catalog.client.service';
 import { CreateProductoDto } from './dto/create-producto.dto';
 
+@UseGuards(SupabaseAuthGuard)
 @Controller('productos')
 export class ProductosController {
   constructor(private readonly catalog: CatalogClientService) {}

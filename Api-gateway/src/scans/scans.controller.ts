@@ -1,8 +1,11 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
+import { UseGuards } from '@nestjs/common';
+import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { ScansClientService } from './scans.client.service';
 import { CreateScanDto } from './dto/create-scan.dto';
 import { UpdateScanDto } from './dto/update-scan.dto';
 
+@UseGuards(SupabaseAuthGuard)
 @Controller('scans')
 export class ScansController {
   constructor(private readonly service: ScansClientService) {}
