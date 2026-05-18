@@ -4,9 +4,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { FlyweightService } from '../shared/flyweight/flyweight.service';
 import { ScanEventsService } from '../shared/observer/scan-events.service';
 
-/**
- * DTO para la comunicación entre Gateway y Microservicio
- */
 export class GenerateRecommendationsDto {
   @IsOptional() @IsString() scanId?: string;
   @IsOptional() @IsString() transformationTypeId?: string;
@@ -17,20 +14,10 @@ export class GenerateRecommendationsDto {
 @Injectable()
 export class RecommendationsService {
   
-  // Mapeo de IDs a instrucciones específicas para la IA
   private readonly STRATEGY_MAP: Record<string, { name: string; instruction: string }> = {
-    "1": { 
-      name: "Reutilizar", 
-      instruction: "estrategia para REUTILIZAR el producto (mismo fin sin cambios drásticos)." 
-    },
-    "2": { 
-      name: "Transformar", 
-      instruction: "estrategia para TRANSFORMAR el producto (Upcycling/crear algo nuevo)." 
-    },
-    "3": { 
-      name: "Reconfigurar", 
-      instruction: "estrategia para RECONFIGURAR el producto (desarmar y usar piezas)." 
-    }
+    "1": { name: "Reutilizar", instruction: "reutilizarlo de forma creativa" },
+    "2": { name: "Transformar", instruction: "hacer un proyecto de upcycling" },
+    "3": { name: "Reconfigurar", instruction: "desarmarlo para usar sus componentes" }
   };
 
   constructor(
@@ -40,11 +27,9 @@ export class RecommendationsService {
   ) {}
 
   async generate(dto: GenerateRecommendationsDto) {
-    console.log(`--- PROCESANDO ESTRATEGIA ESPECÍFICA (${dto.transformationTypeId}) ---`);
+    console.log(`--- GENERANDO RECOMENDACIÓN LOCAL (Llama 3.2 Vision) ---`);
     
-    if (!dto.imageBase64) {
-      throw new BadRequestException('La IA local requiere una imagen en Base64.');
-    }
+    if (!dto.imageBase64) throw new BadRequestException('Imagen requerida');
 
     const estrategiaInfo = this.STRATEGY_MAP[dto.transformationTypeId ?? "1"] || this.STRATEGY_MAP["1"];
 
@@ -53,96 +38,94 @@ export class RecommendationsService {
       this.events.notifyRecsPartial({ 
         scanId: dto.scanId || 'temp', 
         progress: 25, 
-        message: `IA analizando imagen para: ${estrategiaInfo.name}...` 
+        message: `IA local analizando imagen para: ${estrategiaInfo.name}...` 
       });
 
-      // 2. Llamada a la IA Local (Ollama)
-      const rawResponse = await this.askOllama(dto.itemName || 'objeto', dto.imageBase64, estrategiaInfo.instruction);
+      // 2. Llamada a Ollama Local
+      const rawResponse = await this.askOllamaLocal(dto.itemName || 'objeto', dto.imageBase64, estrategiaInfo.instruction);
+      console.log("Respuesta IA:", rawResponse);
 
-      // 3. Procesamiento Resiliente del JSON (Maneja tildes y formato cortado)
-      let descripcionFinal = "";
-      try {
-        const parsed = JSON.parse(rawResponse);
-        // Acepta tanto "descripcion" como "descripción"
-        descripcionFinal = parsed.descripcion || parsed.descripción || parsed.response;
-      } catch (e) {
-        // Si el JSON falla, intentamos extraer el texto entre comillas manualmente
-        const match = rawResponse.match(/"descri(?:p|pc)i(?:ó|o)n"\s*:\s*"([^"]+)"/i);
-        descripcionFinal = match ? match[1] : rawResponse.replace(/[{}]/g, '').trim();
+      // 3. Limpieza de respuesta (evita textos vacíos o raros)
+      let descripcionFinal = rawResponse.replace(/[{}"\n\r]/g, '').trim();
+      
+      if (descripcionFinal.length < 5) {
+        descripcionFinal = `Para ${estrategiaInfo.name} este objeto, intenta buscar tutoriales de economía circular para darle una segunda vida útil.`;
       }
-
-      // 4. Formatear para el Dashboard
-      const recommendationsArray = [
-        { 
-          title: `Estrategia de ${estrategiaInfo.name}`, 
-          description: descripcionFinal || "No se pudo generar una descripción válida.", 
-          confidence: 99, 
-          effort: 'calculado' 
-        }
-      ];
 
       return {
         id: 'local-' + Date.now(),
-        productoNombre: dto.itemName || 'Detectado',
-        recommendations: recommendationsArray,
+        productoNombre: dto.itemName || 'Objeto Detectado',
+        recommendations: [{ 
+          title: `Estrategia de ${estrategiaInfo.name}`, 
+          description: descripcionFinal, 
+          confidence: 99, 
+          effort: 'calculado' 
+        }],
       };
 
     } catch (error) {
-      console.error('Error en Microservicio (Ollama):', error.message);
-      throw new InternalServerErrorException('Fallo en la IA Local: ' + error.message);
+      console.error('Error Local:', error.message);
+      throw new InternalServerErrorException('Error en IA Local: ' + error.message);
     }
   }
 
-  /**
-   * Comunicación directa con el contenedor de Ollama
-   */
-  private async askOllama(itemName: string, imageBase64: string, instruccion: string) {
+  private async askOllamaLocal(itemName: string, imageBase64: string, instruccion: string) {
     const url = "http://innoscan-ollama:11434/api/generate";
-    const base64Data = imageBase64.split(',')[1] || imageBase64;
+    const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
 
     const payload = {
-      model: "moondream",
-      prompt: `Analiza el producto "${itemName}". ${instruccion}. 
-               Sé breve (máximo 3 frases). Responde en español. 
-               Responde ÚNICAMENTE con este formato JSON: {"descripcion": "tu idea"}.`,
+      model: "llava",
+      prompt: `
+Eres un asistente experto en economía circular, reutilización, upcycling y diseño sostenible.
+
+Observa la imagen y genera UNA recomendación útil para ${instruccion}.
+
+Reglas:
+- No describas solamente el objeto.
+- No digas frases genéricas como "agua cristal" o "objeto detectado".
+- Da una idea práctica, creativa y realizable.
+- Responde en español.
+- Máximo 3 frases.
+- Incluye qué se puede hacer y para qué serviría.
+
+Objeto indicado por el usuario: ${itemName}
+
+Respuesta:
+`,
       stream: false,
-      format: "json",
       images: [base64Data],
       options: {
-        num_predict: 200, // Respuesta corta para mayor velocidad y menor consumo de RAM
-        temperature: 0.3,
-        num_ctx: 2048
+        num_predict: 60,
+        temperature: 0.1,
+        num_ctx: 1024,
+        top_k: 1,
+        top_p: 1
       }
     };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) throw new Error(`Ollama Error (${response.status})`);
-
-    const data = await response.json();
-    return data.response; // Enviamos el texto bruto para procesarlo con seguridad
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      return data.response || "";
+    } catch (err) {
+      return "";
+    }
   }
-
-  // --- Métodos de búsqueda ---
 
   async findAll(transformationTypeId?: string, scanId?: string) {
     return this.prisma.recommendationResult.findMany({
       where: { ...(scanId && { scanId }) },
-      include: { scan: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async findOne(id: string) {
-    const r = await this.prisma.recommendationResult.findUnique({
-      where: { id },
-      include: { scan: { include: { category: true } } }
-    });
-    if (!r) throw new NotFoundException(`Resultado "${id}" no encontrado`);
+    const r = await this.prisma.recommendationResult.findUnique({ where: { id } });
+    if (!r) throw new NotFoundException(`No encontrado`);
     return r;
   }
 }
