@@ -6,10 +6,10 @@ import { firstValueFrom } from 'rxjs';
 export class RecommendationsClientService {
   constructor(@Inject('RECOMMENDATION_SERVICE') private readonly client: ClientProxy) {}
 
-  generate(dto: any) {
-    return firstValueFrom(this.client.send('recommendations.generate', dto));
-  }
+  generate(payload: any) {
 
+  return this.client.send('generate_recommendation', payload);
+}
   findAll(transformationTypeId?: string, scanId?: string) {
     return firstValueFrom(this.client.send('recommendations.findAll', { transformationTypeId, scanId }));
   }

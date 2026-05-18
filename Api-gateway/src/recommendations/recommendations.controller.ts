@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Body, Query } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, Query, Req } from '@nestjs/common';
 import { UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { RecommendationsClientService } from './recommendations.client.service';
@@ -9,8 +9,9 @@ export class RecommendationsController {
   constructor(private readonly service: RecommendationsClientService) {}
 
   @Post('generate')
-  generate(@Body() dto: any) {
-    return this.service.generate(dto);
+ generate(@Body() dto: any, @Req() req: any) {
+    const userId = req.user?.id; 
+    return this.service.generate({ ...dto, user_id: userId });
   }
 
   @Get()
