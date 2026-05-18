@@ -9,6 +9,7 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
 import { FeedbackModule }        from './feedback/feedback.module';
 import { ProductosModule }       from './productos/productos.module';
 import { IdeasModule }           from './ideas/ideas.module';
+import { AuthModule }            from './auth/auth.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { IdeasModule }           from './ideas/ideas.module';
     EventEmitterModule.forRoot(),
     PrismaModule,
     SharedModule,
+    AuthModule,
     CatalogModule,
     ScansModule,
     RecommendationsModule,

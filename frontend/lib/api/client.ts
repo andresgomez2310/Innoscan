@@ -1,9 +1,22 @@
+import { createClient } from "@/lib/supabase/client"
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"
 console.log("BASE_URL =", BASE_URL)
 
+async function getAuthHeader(): Promise<Record<string, string>> {
+  try {
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+  } catch {
+    return {}
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-    const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json", ...options?.headers },
+  const authHeader = await getAuthHeader()
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: { "Content-Type": "application/json", ...authHeader, ...options?.headers },
     ...options,
   })
   if (!res.ok) {
@@ -58,12 +71,7 @@ export const apiCategories      = () => request<Category[]>("/api/v1/categories"
 export const apiTransformTypes  = () => request<TransformType[]>("/api/v1/transformation-types")
 
 // Recomendaciones
-export const apiRecommendGenerate = (body: { 
-  scanId: string; 
-  transformationTypeId: string; 
-  itemName?: string;
-  imageBase64?: string;  // <- agregar esto
-}) =>
+export const apiRecommendGenerate = (body: { scanId: string; transformationTypeId: string; itemName?: string }) =>
   request<RecResult>("/api/v1/recommendations/generate", { method: "POST", body: JSON.stringify(body) })
 export const apiRecommendList   = () => request<RecResult[]>("/api/v1/recommendations")
 

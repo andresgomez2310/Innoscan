@@ -1,17 +1,12 @@
-// api-gateway/src/recommendations/recommendations.controller.ts
-
 import { Controller, Post, Get, Param, Body, Query } from '@nestjs/common';
 import { RecommendationsClientService } from './recommendations.client.service';
-import { GenerateRecommendationsDto } from './dto/generate-recommendations.dto';
 
 @Controller('recommendations')
 export class RecommendationsController {
-  // Usamos 'service' como nombre único para el constructor
   constructor(private readonly service: RecommendationsClientService) {}
 
   @Post('generate')
-  async generate(@Body() dto: GenerateRecommendationsDto) {
-    // Esto envía el comando al microservicio por RabbitMQ
+  generate(@Body() dto: any) {
     return this.service.generate(dto);
   }
 

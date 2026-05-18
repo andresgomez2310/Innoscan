@@ -16,23 +16,13 @@ services:
       retries: 5
       start_period: 20s
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: innoscan-ollama
-    volumes:
-      - ./ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-    networks:
-      - innoscan-network
-
   api-gateway:
     build: ./api-gateway
     container_name: innoscan-api-gateway
     ports:
       - "3001:3001"
     env_file:
-      - .env
+      - ./api-gateway/.env
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -43,15 +33,10 @@ services:
     build: ./services/recommendation-services
     container_name: innoscan-recommendation-service
     env_file:
-      - .env
-    environment:
-      # URL interna para que el microservicio hable con la IA local
-      - OLLAMA_URL=http://innoscan-ollama:11434
+      - ./api-gateway/.env
     depends_on:
       rabbitmq:
         condition: service_healthy
-      ollama:
-        condition: service_started
     networks:
       - innoscan-network
 
@@ -59,18 +44,19 @@ services:
     build: ./services/catalog-service
     container_name: innoscan-catalog-service
     env_file:
-      - .env
+      - ./api-gateway/.env
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
       - innoscan-network
 
+  # NUEVO SERVICIO AGREGADO:
   feedback-service:
     build: ./services/feedback-service
     container_name: innoscan-feedback-service
     env_file:
-      - .env
+      - ./api-gateway/.env
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -83,7 +69,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:3001
+      NEXT_PUBLIC_API_URL: http://localhost:3001
     depends_on:
       - api-gateway
     networks:
