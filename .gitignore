@@ -6,4 +6,4 @@ node_modules/
 .env
 .env
 .env
-ollama_data/id_ed25519
+ollama_data/
