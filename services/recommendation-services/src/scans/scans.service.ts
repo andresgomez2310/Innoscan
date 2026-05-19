@@ -11,75 +11,130 @@ export class ScansService {
     return (this.prisma as any).client;
   }
 
-  async create(dto: CreateScanDto) {
-    const { data, error } = await this.db.from('escaneos').insert({
-      producto_id: dto.categoryId,
-      notas:       dto.description ?? dto.itemName,
-      ubicacion:   dto.condition,
-    }).select('*, category:productos(*)').single();
+  async create(dto: CreateScanDto & { userId: string }) {
+    const { data, error } = await this.db
+      .from('escaneos')
+      .insert({
+        user_id: dto.userId,
+        producto_id: dto.categoryId,
+        notas: dto.description ?? dto.itemName,
+        ubicacion: dto.condition,
+      })
+      .select('*, category:productos(*)')
+      .single();
+
     if (error) throw new Error(error.message);
+
     return this.mapScan(data);
   }
 
-  async findAll(page = 1, limit = 20) {
+  async findAll(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
+
     const { data, error, count } = await this.db
       .from('escaneos')
       .select('*, category:productos(*)', { count: 'exact' })
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .range(skip, skip + limit - 1);
+
     if (error) throw new Error(error.message);
+
     const total = count ?? 0;
-    return { data: (data ?? []).map((r: any) => this.mapScan(r)), total, page, pages: Math.ceil(total / limit) };
+
+    return {
+      data: (data ?? []).map((r: any) => this.mapScan(r)),
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, userId: string) {
     const { data, error } = await this.db
       .from('escaneos')
       .select('*, category:productos(*), results:recomendaciones(*)')
-      .eq('id', id).single();
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
     if (error) throw new Error(error.message);
+
     return this.mapScan(data);
   }
 
-  async update(id: string, dto: UpdateScanDto) {
+  async update(id: string, userId: string, dto: UpdateScanDto) {
     const update: any = {};
-    if (dto.condition)   update.ubicacion = dto.condition;
-    if (dto.description) update.notas     = dto.description;
+
+    if (dto.condition) update.ubicacion = dto.condition;
+    if (dto.description) update.notas = dto.description;
+
     const { data, error } = await this.db
-      .from('escaneos').update(update).eq('id', id)
-      .select('*, category:productos(*)').single();
+      .from('escaneos')
+      .update(update)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('*, category:productos(*)')
+      .single();
+
     if (error) throw new Error(error.message);
+
     return this.mapScan(data);
   }
 
-  async getStats() {
+  async getStats(userId: string) {
     const { data, error, count } = await this.db
-      .from('escaneos').select('ubicacion', { count: 'exact' });
+      .from('escaneos')
+      .select('ubicacion', { count: 'exact' })
+      .eq('user_id', userId);
+
     if (error) throw new Error(error.message);
+
     const groups: Record<string, number> = {};
+
     for (const row of data ?? []) {
       const key = row.ubicacion ?? 'PENDING';
       groups[key] = (groups[key] ?? 0) + 1;
     }
-    return { total: count ?? 0, byStatus: Object.entries(groups).map(([status, c]) => ({ status, _count: { _all: c } })) };
+
+    return {
+      total: count ?? 0,
+      byStatus: Object.entries(groups).map(([status, c]) => ({
+        status,
+        _count: {
+          _all: c,
+        },
+      })),
+    };
   }
 
-  async remove(id: string) {
-    const { error } = await this.db.from('escaneos').delete().eq('id', id);
+  async remove(id: string, userId: string) {
+    const { error } = await this.db
+      .from('escaneos')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
     if (error) throw new Error(error.message);
-    return { deleted: true, id };
+
+    return {
+      deleted: true,
+      id,
+    };
   }
 
   private mapScan(row: any) {
     if (!row) return null;
+
     return {
       ...row,
-      itemName:   row.notas ?? '',
+      id: row.id,
+      userId: row.user_id,
+      itemName: row.notas ?? '',
       categoryId: row.producto_id,
-      condition:  row.ubicacion ?? 'bueno',
-      status:     'PENDING',
-      createdAt:  row.created_at,
+      condition: row.ubicacion ?? 'bueno',
+      status: 'PENDING',
+      createdAt: row.created_at,
     };
   }
 }

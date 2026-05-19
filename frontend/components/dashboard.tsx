@@ -4,6 +4,8 @@ import React, { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProductosTab }       from "@/components/productos-tab"
 import { RecomendacionesTab } from "@/components/recomendaciones-tab"
+import { LogoutButton } from "@/components/logout-button"
+import { useUser } from "@/hooks/use-user"
 import { 
   Package, Lightbulb, ScanLine, Sparkles, Wand2, 
   LayoutDashboard, Settings, MessageSquare, Menu 
@@ -21,6 +23,7 @@ const COLORS = {
 
 export function Dashboard({ productos, ideas, escaneos, recomendaciones }: any) {
   const [activeTab, setActiveTab] = useState("recomendaciones")
+  const { user } = useUser()
 
   return (
     <div className={`flex min-h-screen ${COLORS.bg} text-slate-200 font-sans`}>
@@ -68,6 +71,12 @@ export function Dashboard({ productos, ideas, escaneos, recomendaciones }: any) 
              <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
                 <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
              </div>
+             {user && (
+               <span className="text-slate-300 hidden sm:inline">
+                 {user.email}
+               </span>
+             )}
+             <LogoutButton />
            </div>
         </header>
 

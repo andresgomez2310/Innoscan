@@ -4,17 +4,28 @@ import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class RecommendationsClientService {
-  constructor(@Inject('RECOMMENDATION_SERVICE') private readonly client: ClientProxy) {}
+  constructor(
+    @Inject('RECOMMENDATION_SERVICE') private readonly client: ClientProxy,
+  ) {}
 
-  generate(dto: any) {
-    return firstValueFrom(this.client.send('recommendations.generate', dto));
+  generate(payload: any) {
+    return firstValueFrom(
+      this.client.send('recommendations.generate', payload),
+    );
   }
 
   findAll(transformationTypeId?: string, scanId?: string) {
-    return firstValueFrom(this.client.send('recommendations.findAll', { transformationTypeId, scanId }));
+    return firstValueFrom(
+      this.client.send('recommendations.findAll', {
+        transformationTypeId,
+        scanId,
+      }),
+    );
   }
 
   findOne(id: string) {
-    return firstValueFrom(this.client.send('recommendations.findOne', { id }));
+    return firstValueFrom(
+      this.client.send('recommendations.findOne', { id }),
+    );
   }
 }

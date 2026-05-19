@@ -1,14 +1,17 @@
-import { Controller, Get, Post, Delete, Param, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body } from '@nestjs/common';
+import { UseGuards } from '@nestjs/common';
+import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { CatalogClientService } from '../catalog/catalog.client.service';
 import { CreateProductoDto } from './dto/create-producto.dto';
 
+@UseGuards(SupabaseAuthGuard)
 @Controller('productos')
 export class ProductosController {
   constructor(private readonly catalog: CatalogClientService) {}
 
   @Get()
-  findAll(@Query('search') search?: string, @Query('categoria') categoria?: string) {
-    return this.catalog.findAll(search, categoria);
+  findAll() {
+    return this.catalog.findAll();
   }
 
   @Post()

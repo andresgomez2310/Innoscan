@@ -28,7 +28,11 @@ async function bootstrap() {
   });
 
   const port = process.env.PORT || 3001;
-  await app.listen(port);
-  console.log(`🚀 InnoScan API corriendo en http://localhost:${port}/api/v1`);
+  
+
+  await app.listen(port, '0.0.0.0'); 
+  
+  console.log(`🚀 InnoScan API corriendo en el puerto ${port}`);
+  console.log(`🌍 Prefijo global: /api/v1`);
 }
 bootstrap();

@@ -1,3 +1,21 @@
+# Dependencias
 node_modules/
+
+# Compilación
 dist/
+.next/
+out/
+
+# Variables de entorno (Seguridad)
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Datos pesados de IA
+ollama_data/
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db

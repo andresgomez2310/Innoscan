@@ -1,7 +1,10 @@
 import { Controller, Get, Post, Delete, Patch, Param, Body, Query } from '@nestjs/common';
+import { UseGuards } from '@nestjs/common';
+import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { FeedbackClientService } from '../feedback/feedback.client.service';
 import { CreateIdeaDto } from './dto/create-idea.dto';
 
+@UseGuards(SupabaseAuthGuard)
 @Controller('ideas')
 export class IdeasController {
   constructor(private readonly service: FeedbackClientService) {}
