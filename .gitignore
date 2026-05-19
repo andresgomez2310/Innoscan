@@ -1,15 +1,9 @@
-# IA Local (Modelos pesados)
-ollama_data/
-
-# Secretos y configuraciones
-.env
-*.env
-
-# Dependencias de Node
 node_modules/
-dist/
-.DS_Store
-
-# Claves privadas que veo en tu captura
+    .next/
+    .env
+.env
+.env
+.env
+.env
+.env
 ollama_data/id_ed25519
-ollama_data/id_ed25519.pub
