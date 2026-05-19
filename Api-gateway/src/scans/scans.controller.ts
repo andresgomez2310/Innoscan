@@ -1,4 +1,7 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
+import { 
+  Controller, Get, Post, Patch, Delete, Param, Body, 
+  Query, ParseIntPipe, DefaultValuePipe, Req 
+} from '@nestjs/common';
 import { UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { ScansClientService } from './scans.client.service';
@@ -11,35 +14,42 @@ export class ScansController {
   constructor(private readonly service: ScansClientService) {}
 
   @Post()
-  create(@Body() dto: CreateScanDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateScanDto, @Req() req: any) {
+    const userId = req.user.id; // Extraído del JWT por el Guard
+    return this.service.create({ ...dto, userId });
   }
 
   @Get()
   findAll(
+    @Req() req: any,
     @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page:  number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
-    return this.service.findAll(page, limit);
+    const userId = req.user.id;
+    return this.service.findAll(userId, page, limit);
   }
 
   @Get('stats')
-  stats() {
-    return this.service.getStats();
+  stats(@Req() req: any) {
+    const userId = req.user.id; // Vital para que el dashboard no sume todo lo de la DB
+    return this.service.getStats(userId);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  findOne(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user.id;
+    return this.service.findOne(id, userId);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateScanDto) {
-    return this.service.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateScanDto, @Req() req: any) {
+    const userId = req.user.id;
+    return this.service.update(id, userId, dto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.service.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user.id;
+    return this.service.remove(id, userId);
   }
 }

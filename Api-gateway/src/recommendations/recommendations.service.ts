@@ -73,17 +73,15 @@ export class RecommendationsService {
     return saved;
   }
 
-  async findAll(transformationTypeId?: string, scanId?: string) {
-    return this.prisma.recommendationResult.findMany({
-      where: {
-        ...(transformationTypeId && { transformationTypeId }),
-        ...(scanId && { scanId }),
-      },
-      include: { transformationType: true, scan: true, feedback: true },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
+  async findAll(userId: string, transformationTypeId?: string, scanId?: string) {
+  return this.prisma.recommendationResult.findMany({
+    where: { 
+      user_id: userId, // <--- FILTRO OBLIGATORIO POR USUARIO
+      ...(scanId && { scanId }) 
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
   async findOne(id: string) {
     const r = await this.prisma.recommendationResult.findUnique({
       where: { id },

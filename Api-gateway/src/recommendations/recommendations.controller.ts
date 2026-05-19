@@ -16,9 +16,11 @@ export class RecommendationsController {
 
   @Get()
   findAll(
+    @Req() req: any,
     @Query('transformationTypeId') typeId?: string,
     @Query('scanId') scanId?: string,
   ) {
+    const userId = req.user.id;
     return this.service.findAll(typeId, scanId);
   }
 

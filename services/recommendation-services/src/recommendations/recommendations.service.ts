@@ -1,98 +1,131 @@
-
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { IsUUID, IsString, IsOptional } from 'class-validator';
-import { PrismaService }        from '../prisma/prisma.service';
-import { FlyweightService }     from '../shared/flyweight/flyweight.service';
-import { ScanEventsService }    from '../shared/observer/scan-events.service';
-import { RecommendationResultBuilder } from './builder/recommendation-result.builder';
-import { StrategyFactory }      from './strategies/strategy.factory';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { IsString, IsOptional } from 'class-validator';
+import { PrismaService } from '../prisma/prisma.service';
+import { FlyweightService } from '../shared/flyweight/flyweight.service';
+import { ScanEventsService } from '../shared/observer/scan-events.service';
 
 export class GenerateRecommendationsDto {
-  @IsUUID()   scanId: string;
-  @IsUUID()   transformationTypeId: string;
+  @IsOptional() @IsString() scanId?: string;
+  @IsOptional() @IsString() transformationTypeId?: string;
   @IsOptional() @IsString() itemName?: string;
+  @IsOptional() @IsString() imageBase64?: string; 
 }
 
 @Injectable()
 export class RecommendationsService {
+  
+  private readonly STRATEGY_MAP: Record<string, { name: string; instruction: string }> = {
+    "1": { name: "Reutilizar", instruction: "reutilizarlo de forma creativa" },
+    "2": { name: "Transformar", instruction: "hacer un proyecto de upcycling" },
+    "3": { name: "Reconfigurar", instruction: "desarmarlo para usar sus componentes" }
+  };
+
   constructor(
-    private readonly prisma:    PrismaService,
-    private readonly flyweight: FlyweightService,  // Flyweight
-    private readonly events:    ScanEventsService, // Observer
+    private readonly prisma: PrismaService,
+    private readonly flyweight: FlyweightService,
+    private readonly events: ScanEventsService,
   ) {}
 
   async generate(dto: GenerateRecommendationsDto) {
-    // 1. Obtener scan
-    const scan = await this.prisma.scan.findUnique({ where: { id: dto.scanId } });
-    if (!scan) throw new NotFoundException(`Scan "${dto.scanId}" no encontrado`);
+    console.log(`--- GENERANDO RECOMENDACIÓN LOCAL (Llama 3.2 Vision) ---`);
+    
+    if (!dto.imageBase64) throw new BadRequestException('Imagen requerida');
 
-    // 2. FLYWEIGHT: TransformationType desde cache (sin ir a DB)
-    const tType = await this.flyweight.getTransformationTypeById(dto.transformationTypeId);
-    if (!tType) throw new BadRequestException('TransformationType inválido');
+    const estrategiaInfo = this.STRATEGY_MAP[dto.transformationTypeId ?? "1"] || this.STRATEGY_MAP["1"];
 
-    // 3. OBSERVER: notificar resultado parcial 25%
-    this.events.notifyRecsPartial({ scanId: dto.scanId, progress: 25, message: `Analizando "${scan.itemName}"...` });
+    try {
+      // 1. Notificar progreso vía Observer
+      this.events.notifyRecsPartial({ 
+        scanId: dto.scanId || 'temp', 
+        progress: 25, 
+        message: `IA local analizando imagen para: ${estrategiaInfo.name}...` 
+      });
 
-    // 4. STRATEGY: seleccionar y ejecutar el algoritmo correcto
-    const strategy = StrategyFactory.create(tType.strategyKey);
-    const items    = strategy.generate(dto.itemName ?? scan.itemName, scan.condition);
+      // 2. Llamada a Ollama Local
+      const rawResponse = await this.askOllamaLocal(dto.itemName || 'objeto', dto.imageBase64, estrategiaInfo.instruction);
+      console.log("Respuesta IA:", rawResponse);
 
-    // 5. OBSERVER: notificar resultado parcial 70%
-    this.events.notifyRecsPartial({ scanId: dto.scanId, progress: 70, message: `Estrategia "${strategy.name}" aplicada...` });
+      // 3. Limpieza de respuesta (evita textos vacíos o raros)
+      let descripcionFinal = rawResponse.replace(/[{}"\n\r]/g, '').trim();
+      
+      if (descripcionFinal.length < 5) {
+        descripcionFinal = `Para ${estrategiaInfo.name} este objeto, intenta buscar tutoriales de economía circular para darle una segunda vida útil.`;
+      }
 
-    // 6. BUILDER: construir resultado validado paso a paso
-    const built = new RecommendationResultBuilder()
-      .withScanId(dto.scanId)
-      .withTransformationTypeId(tType.id)
-      .withStrategyName(strategy.name)
-      .withRecommendations(items)
-      .build();  // lanza Error si falta algo
+      return {
+        id: 'local-' + Date.now(),
+        productoNombre: dto.itemName || 'Objeto Detectado',
+        recommendations: [{ 
+          title: `Estrategia de ${estrategiaInfo.name}`, 
+          description: descripcionFinal, 
+          confidence: 99, 
+          effort: 'calculado' 
+        }],
+      };
 
-    // 7. Persistir en PostgreSQL
-    const saved = await this.prisma.recommendationResult.create({
-      data: {
-  scanId:          built.scanId,
-  strategyName:    built.strategyName,
-  recommendations: built.recommendations as any,
-},
-      include: {
-  scan: { include: { category: true } },
-}
-    });
+    } catch (error) {
+      console.error('Error Local:', error.message);
+      throw new InternalServerErrorException('Error en IA Local: ' + error.message);
+    }
+  }
 
-    // 8. Actualizar estado del scan
-    await this.prisma.scan.update({ where: { id: dto.scanId }, data: { status: 'PROCESSED' } });
+  private async askOllamaLocal(itemName: string, imageBase64: string, instruccion: string) {
+    const url = "http://innoscan-ollama:11434/api/generate";
+    const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
 
-    // 9. OBSERVER: notificar resultado COMPLETO
-    // this.events.notifyRecsComplete({
-//   resultId: saved.id,
-//   scanId: dto.scanId,
-//   strategyName: strategy.name,
-// });
+    const payload = {
+      model: "llava",
+      prompt: `
+Eres un asistente experto en economía circular, reutilización, upcycling y diseño sostenible.
 
-    return saved;
+Observa la imagen y genera UNA recomendación útil para ${instruccion}.
+
+Reglas:
+- No describas solamente el objeto.
+- No digas frases genéricas como "agua cristal" o "objeto detectado".
+- Da una idea práctica, creativa y realizable.
+- Responde en español.
+- Máximo 3 frases.
+- Incluye qué se puede hacer y para qué serviría.
+
+Objeto indicado por el usuario: ${itemName}
+
+Respuesta:
+`,
+      stream: false,
+      images: [base64Data],
+      options: {
+        num_predict: 60,
+        temperature: 0.1,
+        num_ctx: 1024,
+        top_k: 1,
+        top_p: 1
+      }
+    };
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      return data.response || "";
+    } catch (err) {
+      return "";
+    }
   }
 
   async findAll(transformationTypeId?: string, scanId?: string) {
     return this.prisma.recommendationResult.findMany({
-      where: {
-  ...(scanId && { scanId }),
-},
-      include: {
-  scan: true,
-},
+      where: { ...(scanId && { scanId }) },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async findOne(id: string) {
-    const r = await this.prisma.recommendationResult.findUnique({
-      where: { id },
-      include: {
-  scan: { include: { category: true } },
-}
-    });
-    if (!r) throw new NotFoundException(`Resultado "${id}" no encontrado`);
+    const r = await this.prisma.recommendationResult.findUnique({ where: { id } });
+    if (!r) throw new NotFoundException(`No encontrado`);
     return r;
   }
 }
