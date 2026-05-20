@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProductosTab }       from "@/components/productos-tab"
 import { RecomendacionesTab } from "@/components/recomendaciones-tab"
 import { LogoutButton } from "@/components/logout-button"
+import { RecomendacionesHistorial } from "@/components/recomendaciones-historial"
 import { useUser } from "@/hooks/use-user"
 import { 
   Package, Lightbulb, ScanLine, Sparkles, Wand2, 
@@ -50,7 +51,12 @@ export function Dashboard({ productos, ideas, escaneos, recomendaciones }: any) 
             active={activeTab === "productos"} 
             onClick={() => setActiveTab("productos")}
           />
-          <SidebarItem icon={<ScanLine size={20}/>} label="Historial Scans" />
+          <SidebarItem 
+  icon={<ScanLine size={20}/>} 
+  label="Historial Recomendaciones" 
+  active={activeTab === "recomendaciones-historial"} 
+  onClick={() => setActiveTab("recomendaciones-historial")}
+/>
           <SidebarItem icon={<MessageSquare size={20}/>} label="Feedback" />
         </nav>
 
@@ -92,17 +98,24 @@ export function Dashboard({ productos, ideas, escaneos, recomendaciones }: any) 
           {/* Área de Tabs adaptada */}
           <div className={`${COLORS.card} rounded-2xl border ${COLORS.border} p-1 shadow-2xl`}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsContent value="recomendaciones" className="mt-0 outline-none">
-                <div className="p-6">
-                  <RecomendacionesTab productos={productos} recomendacionesPrevias={recomendaciones} />
-                </div>
-              </TabsContent>
-              <TabsContent value="productos" className="mt-0 outline-none">
-                <div className="p-6">
-                  <ProductosTab productos={productos} />
-                </div>
-              </TabsContent>
-            </Tabs>
+  <TabsContent value="recomendaciones" className="mt-0 outline-none">
+    <div className="p-6">
+      <RecomendacionesTab productos={productos} recomendacionesPrevias={recomendaciones} />
+    </div>
+  </TabsContent>
+
+  <TabsContent value="recomendaciones-historial" className="mt-0 outline-none">
+    <div className="p-6">
+      <RecomendacionesHistorial />
+    </div>
+  </TabsContent>
+
+  <TabsContent value="productos" className="mt-0 outline-none">
+    <div className="p-6">
+      <ProductosTab productos={productos} />
+    </div>
+  </TabsContent>
+</Tabs>
           </div>
         </div>
       </main>

@@ -25,6 +25,18 @@ export class GenerateRecommendationsDto {
   @IsOptional()
   @IsString()
   imageBase64?: string;
+
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  productId?: string;
+
+  @IsOptional()
+  @IsString()
+  condition?: string;
 }
 
 @Injectable()
@@ -109,19 +121,56 @@ export class RecommendationsService {
         descripcionFinal = `Puedes ${estrategiaInfo.instruction}. La idea es darle una segunda vida funcional al objeto, por ejemplo como elemento de almacenamiento, decoración o soporte, según su forma y material.`;
       }
 
-      return {
-        id: 'local-' + Date.now(),
-        productoNombre: dto.itemName || 'Objeto detectado',
-        strategyName: estrategiaInfo.name,
-        recommendations: [
-          {
-            title: `Idea para ${estrategiaInfo.name}`,
-            description: descripcionFinal,
-            confidence: 92,
-            effort: 'medio',
-          },
-        ],
-      };
+      const recommendationPayload = [
+  {
+    title: `Idea para ${estrategiaInfo.name}`,
+    description: descripcionFinal,
+    confidence: 92,
+    effort: 'medio',
+  },
+];
+
+const db = (this.prisma as any).client;
+
+let saved: any = null;
+
+try {
+  const { data, error } = await db
+    .from('recomendaciones')
+    .insert({
+      escaneo_id: dto.scanId || null,
+      producto_id: dto.productId || null,
+      producto_nombre: dto.itemName || 'Objeto detectado',
+      condicion: dto.condition || 'bueno',
+      estrategia_key: dto.transformationTypeId || '1',
+      estrategia_nombre: estrategiaInfo.name,
+      recomendaciones: recommendationPayload,
+      confianza_promedio: 92,
+      procesado_en_ms: 0,
+      estado: 'COMPLETADO',
+      user_id: dto.userId || null,
+    })
+    .select('*')
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  saved = data;
+} catch (saveError: any) {
+  console.warn(
+    'No se pudo guardar la recomendación:',
+    saveError?.message || saveError,
+  );
+}
+
+return {
+  id: saved?.id || 'local-' + Date.now(),
+  scanId: dto.scanId,
+  productoNombre: dto.itemName || 'Objeto detectado',
+  strategyName: estrategiaInfo.name,
+  recommendations: recommendationPayload,
+  createdAt: saved?.created_at || new Date().toISOString(),
+};
     } catch (error: any) {
       console.error('Error Local:', error?.message || error);
 
@@ -204,18 +253,28 @@ Respuesta final:
     return data.response || '';
   }
 
-  async findAll(transformationTypeId?: string, scanId?: string) {
-    return this.prisma.recommendationResult.findMany({
-      where: {
-        ...(scanId && { scanId }),
-        ...(transformationTypeId && { transformationTypeId }),
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+  async findAll(userId?: string, transformationTypeId?: string, scanId?: string) {
+  const db = (this.prisma as any).client;
+  let query = db
+    .from('recomendaciones')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (userId) {
+    query = query.eq('user_id', userId);
   }
+  if (transformationTypeId) {
+    query = query.eq('estrategia_key', transformationTypeId);
+  }
+  if (scanId) {
+    query = query.eq('escaneo_id', scanId);
+  }
+  const { data, error } = await query;
 
+  if (error) {
+    throw new Error(error.message);
+  }
+  return data ?? [];
+}
   async findOne(id: string) {
     const r = await this.prisma.recommendationResult.findUnique({
       where: {

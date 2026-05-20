@@ -175,6 +175,8 @@ export const apiRecommendGenerate = (body: {
   transformationTypeId: string
   itemName?: string
   imageBase64?: string
+  productId?: string
+  condition?: string
 }) =>
   request<RecResult>("/api/v1/recommendations/generate", {
     method: "POST",

@@ -9,9 +9,13 @@ export class RecommendationsController {
   constructor(private readonly service: RecommendationsClientService) {}
 
   @Post('generate')
- generate(@Body() dto: any, @Req() req: any) {
-    const userId = req.user?.id; 
-    return this.service.generate({ ...dto, user_id: userId });
+  generate(@Body() dto: any, @Req() req: any) {
+    const userId = req.user.id;
+
+    return this.service.generate({
+      ...dto,
+      userId,
+    });
   }
 
   @Get()
@@ -21,7 +25,8 @@ export class RecommendationsController {
     @Query('scanId') scanId?: string,
   ) {
     const userId = req.user.id;
-    return this.service.findAll(typeId, scanId);
+
+    return this.service.findAll(userId, typeId, scanId);
   }
 
   @Get(':id')

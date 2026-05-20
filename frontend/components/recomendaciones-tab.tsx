@@ -114,11 +114,13 @@ export function RecomendacionesTab({ productos }: { productos: any[] }) {
       setProgresoMsg("Analizando con IA Local...")
 
       const response = await apiRecommendGenerate({
-        scanId: scan.id,
-        transformationTypeId: tipoId, 
-        itemName: producto.nombre,
-        imageBase64: imagen.base64 
-      })
+  scanId: scan.id,
+  transformationTypeId: tipoId,
+  itemName: producto.nombre,
+  imageBase64: imagen.base64,
+  productId: producto.id,
+  condition: condicion,
+})
 
       // Corregido: Agregada la condición al Builder
       const builderRes = new RecomendacionResultadoBuilder()

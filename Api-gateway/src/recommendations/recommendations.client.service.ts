@@ -14,9 +14,10 @@ export class RecommendationsClientService {
     );
   }
 
-  findAll(transformationTypeId?: string, scanId?: string) {
+  findAll(userId?: string, transformationTypeId?: string, scanId?: string) {
     return firstValueFrom(
       this.client.send('recommendations.findAll', {
+        userId,
         transformationTypeId,
         scanId,
       }),
