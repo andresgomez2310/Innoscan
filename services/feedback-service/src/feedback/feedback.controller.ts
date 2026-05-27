@@ -9,7 +9,7 @@ export class FeedbackController {
 
   @MessagePattern('feedback.create')
   create(@Payload() dto: CreateFeedbackDto) {
-    return this.service.create(dto,dto.userId!);
+    return this.service.create(dto);
   }
 
   @MessagePattern('feedback.findAll')

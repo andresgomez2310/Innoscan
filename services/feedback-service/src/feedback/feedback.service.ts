@@ -10,16 +10,20 @@ export class FeedbackService {
     return (this.prisma as any).client;
   }
 
- async create(dto: CreateFeedbackDto, userId: string) {
-  if (!userId) throw new Error("userId obligatorio para RLS");
+ async create(dto: CreateFeedbackDto) {
+  if (!dto.userId) throw new Error("userId obligatorio para RLS");
+
+  if (dto.accessToken) {
+    await this.db.auth.setSession({ access_token: dto.accessToken, refresh_token: '' });
+  }
 
   const { data, error } = await this.db
     .from('feedback')
     .insert({
       recomendacion_id: dto.resultId,
-      rating: dto.rating,
-      comentario: dto.comment ?? '',
-      user_id: userId, // <--- obligatorio
+      rating:           dto.rating,
+      comentario:       dto.comment ?? '',
+      user_id:          dto.userId,
     })
     .select('*')
     .single();
@@ -27,14 +31,13 @@ export class FeedbackService {
   if (error) throw new Error(error.message);
 
   return {
-    id: data.id,
-    resultId: data.recomendacion_id,
-    rating: data.rating,
-    comment: data.comentario,
+    id:        data.id,
+    resultId:  data.recomendacion_id,
+    rating:    data.rating,
+    comment:   data.comentario,
     createdAt: data.created_at,
   };
 }
-
   async findAll(minRating?: number, resultId?: string, userId?: string) {
   let q = this.db.from('feedback').select('*').order('created_at', { ascending: false });
   

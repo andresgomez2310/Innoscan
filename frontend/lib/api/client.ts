@@ -191,6 +191,7 @@ export const apiFeedbackCreate = (body: {
   resultId: string
   rating: number
   comment?: string
+  userId?: string  // 👈 agregar esto
 }) =>
   request<any>("/api/v1/feedback", {
     method: "POST",

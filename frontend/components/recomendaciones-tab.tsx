@@ -10,6 +10,7 @@ import { FlyweightCache, CONDICION_TAGS } from "@/lib/patterns/flyweight"
 import { RecomendacionResultadoBuilder } from "@/lib/patterns/builder"
 import { useScanObserver } from "@/lib/patterns/observer"
 import { apiTransformTypes, apiEscaneoCreate, apiRecommendGenerate, apiFeedbackCreate } from "@/lib/api/client"
+import { useUser } from "@/hooks/use-user"
 
 const THEME = {
   bgCard: "bg-[#0D1117]",
@@ -39,6 +40,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 
 export function RecomendacionesTab({ productos }: { productos: any[] }) {
   // --- Estados ---
+  const { user: currentUser } = useUser()
   const [loading, setLoading] = useState(false)
   const [progreso, setProgreso] = useState(0)
   const [progresoMsg, setProgresoMsg] = useState("")
@@ -171,6 +173,11 @@ const enviarFeedback = async () => {
     return
   }
 
+  if (!currentUser) {
+    setError("Debes iniciar sesión para enviar feedback")
+    return
+  }
+
   try {
     setSendingFeedback(true)
 
@@ -178,6 +185,7 @@ const enviarFeedback = async () => {
       resultId: scanResultId ?? crypto.randomUUID(),
       rating,
       comment,
+      userId: currentUser.id, // ✅ aquí está el userId real
     })
 
     setToast("Feedback enviado correctamente")

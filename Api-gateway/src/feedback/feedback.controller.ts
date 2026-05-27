@@ -11,8 +11,10 @@ export class FeedbackController {
 
   @Post()
   create(@Body() dto: CreateFeedbackDto, @Req() req: any) {
-    return this.service.create({ ...dto, userId: req.user.id })
-  }
+  dto.userId = req.user.id;
+  dto.accessToken = req.headers.authorization?.replace('Bearer ', '');  // 👈
+  return this.service.create(dto)
+}
 
   @Get()
 findAll(
