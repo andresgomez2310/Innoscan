@@ -205,7 +205,9 @@ return {
       prompt: `
 Eres un experto en economía circular, reutilización, upcycling y diseño sostenible.
 
-Analiza la imagen del objeto. El usuario dice que el objeto es: "${itemName}".
+Analiza visualmente la imagen. Identifica el objeto y su material principal por lo que VES en la imagen, no por lo que el usuario dice.
+
+IMPORTANTE: En tu respuesta DEBES mencionar el material principal usando exactamente una de estas palabras: madera, plástico, metal, cartón, vidrio, electrónico, tela, orgánico.
 
 Tu tarea es generar UNA recomendación de tipo "${estrategiaNombre}".
 
@@ -213,6 +215,7 @@ Instrucción específica:
 ${instruccion}
 
 Reglas obligatorias:
+- Identifica el material por la imagen, no por el nombre del objeto.
 - No hagas una descripción publicitaria del objeto.
 - No digas solamente qué objeto ves.
 - No respondas con frases como "agua cristal", "botella de agua" u "objeto detectado".
