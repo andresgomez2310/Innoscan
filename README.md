@@ -12,6 +12,8 @@ npm run db:migrate
 npm run db:seed
 npm run start:dev           # corre en http://localhost:3001
 ```
+Para la IA:
+docker exec -it innoscan-ollama ollama pull llava
 
 ### 2. Frontend
 ```bash
