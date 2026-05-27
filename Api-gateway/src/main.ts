@@ -2,9 +2,14 @@ import { NestFactory }    from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule }      from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Limite de payload aumentado para imágenes grandes
+  app.use(bodyParser.json({ limit: '10mb' }));
+  app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
@@ -28,7 +33,6 @@ async function bootstrap() {
   });
 
   const port = process.env.PORT || 3001;
-  
 
   await app.listen(port, '0.0.0.0'); 
   

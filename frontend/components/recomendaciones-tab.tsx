@@ -49,7 +49,22 @@ export function RecomendacionesTab({ productos }: { productos: any[] }) {
       }
     })
   }, [])
+async function resizeImage(file: File | Blob): Promise<string> {
+  const img = new Image()
+  img.src = URL.createObjectURL(file)
+  await img.decode()
 
+  const canvas = document.createElement('canvas')
+  const MAX_SIZE = 1024
+  const scale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height, 1)
+
+  canvas.width = img.width * scale
+  canvas.height = img.height * scale
+  const ctx = canvas.getContext('2d')
+  ctx?.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+  return canvas.toDataURL('image/jpeg', 0.8) // Base64 comprimida
+}
   // --- NUEVA FUNCIÓN: Limpiar para nuevo análisis ---
   const nuevaConsulta = () => {
     setResultado(null)
@@ -62,34 +77,23 @@ export function RecomendacionesTab({ productos }: { productos: any[] }) {
   }
 
   // --- Manejo y Optimización de Imagen ---
-  const handleImagen = (file: File | undefined) => {
-    if (!file) return
-    if (!file.type.startsWith("image/")) return setError("Formato no válido")
-    
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-        // Redimensionar para ahorrar RAM en IA local
-        const scale = Math.min(1, 800 / Math.max(img.width, img.height))
-        canvas.width = img.width * scale
-        canvas.height = img.height * scale
-        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height)
+const handleImagen = async (file: File | undefined) => {
+  if (!file) return
+  if (!file.type.startsWith("image/")) return setError("Formato no válido")
 
-        const jpegBase64 = canvas.toDataURL('image/jpeg', 0.8)
-        setImagen({ 
-          file, 
-          preview: jpegBase64,
-          base64: jpegBase64 
-        })
-        setError("")
-      }
-      img.src = event.target?.result as string
-    }
-    reader.readAsDataURL(file)
+  try {
+    const base64 = await resizeImage(file)
+    setImagen({
+      file,
+      preview: base64,
+      base64
+    })
+    setError("")
+  } catch (e) {
+    console.error("Error procesando la imagen:", e)
+    setError("No se pudo procesar la imagen")
   }
+}
 
   // --- Flujo Principal ---
   const generarInnovacion = async () => {
