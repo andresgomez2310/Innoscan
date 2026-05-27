@@ -9,7 +9,7 @@ import { Upload, Sparkles, Loader2, RefreshCw, Wand2, CheckCircle2, AlertCircle 
 import { FlyweightCache, CONDICION_TAGS } from "@/lib/patterns/flyweight"
 import { RecomendacionResultadoBuilder } from "@/lib/patterns/builder"
 import { useScanObserver } from "@/lib/patterns/observer"
-import { apiTransformTypes, apiEscaneoCreate, apiRecommendGenerate } from "@/lib/api/client"
+import { apiTransformTypes, apiEscaneoCreate, apiRecommendGenerate, apiFeedbackCreate } from "@/lib/api/client"
 
 const THEME = {
   bgCard: "bg-[#0D1117]",
@@ -18,6 +18,25 @@ const THEME = {
   accentBg: "bg-[#00FF66]/10",
 }
 
+// ── Toast ─────────────────────────────────────────────────────
+function Toast({ message, onClose }: { message: string; onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 3500)
+    return () => clearTimeout(t)
+  }, [onClose])
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+      <div className="flex items-center gap-3 bg-[#0D1117] border border-[#00FF66]/30 rounded-2xl px-5 py-4 shadow-[0_0_30px_rgba(0,255,102,0.15)]">
+        <CheckCircle2 className="h-5 w-5 text-[#00FF66] shrink-0" />
+        <p className="text-white text-xs font-black uppercase tracking-[0.2em]">{message}</p>
+        <button onClick={onClose} className="ml-2 text-slate-500 hover:text-white text-lg leading-none">×</button>
+      </div>
+    </div>
+  )
+}
+// ─────────────────────────────────────────────────────────────
+
 export function RecomendacionesTab({ productos }: { productos: any[] }) {
   // --- Estados ---
   const [loading, setLoading] = useState(false)
@@ -25,12 +44,16 @@ export function RecomendacionesTab({ productos }: { productos: any[] }) {
   const [progresoMsg, setProgresoMsg] = useState("")
   const [productoId, setProductoId] = useState("")
   const [condicion, setCondicion] = useState("bueno")
-  const [tipoId, setTipoId] = useState("1") 
+  const [tipoId, setTipoId] = useState("1")
   const [tipos, setTipos] = useState<any[]>([])
   const [imagen, setImagen] = useState<{ file: File; preview: string; base64: string } | null>(null)
   const [resultado, setResultado] = useState<any>(null)
   const [error, setError] = useState("")
-
+  const [rating, setRating] = useState(0)
+  const [comment, setComment] = useState("")
+  const [sendingFeedback, setSendingFeedback] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)  // 👈 nuevo estado para el toast
+  const [scanResultId, setScanResultId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // --- Observer: Progreso de la IA ---
@@ -50,7 +73,7 @@ export function RecomendacionesTab({ productos }: { productos: any[] }) {
     })
   }, [])
 
-  // --- NUEVA FUNCIÓN: Limpiar para nuevo análisis ---
+  // --- Limpiar para nuevo análisis ---
   const nuevaConsulta = () => {
     setResultado(null)
     setImagen(null)
@@ -65,25 +88,19 @@ export function RecomendacionesTab({ productos }: { productos: any[] }) {
   const handleImagen = (file: File | undefined) => {
     if (!file) return
     if (!file.type.startsWith("image/")) return setError("Formato no válido")
-    
+
     const reader = new FileReader()
     reader.onload = (event) => {
       const img = new Image()
       img.onload = () => {
         const canvas = document.createElement('canvas')
         const ctx = canvas.getContext('2d')
-        // Redimensionar para ahorrar RAM en IA local
         const scale = Math.min(1, 800 / Math.max(img.width, img.height))
         canvas.width = img.width * scale
         canvas.height = img.height * scale
         ctx?.drawImage(img, 0, 0, canvas.width, canvas.height)
-
         const jpegBase64 = canvas.toDataURL('image/jpeg', 0.8)
-        setImagen({ 
-          file, 
-          preview: jpegBase64,
-          base64: jpegBase64 
-        })
+        setImagen({ file, preview: jpegBase64, base64: jpegBase64 })
         setError("")
       }
       img.src = event.target?.result as string
@@ -114,23 +131,28 @@ export function RecomendacionesTab({ productos }: { productos: any[] }) {
       setProgresoMsg("Analizando con IA Local...")
 
       const response = await apiRecommendGenerate({
-  scanId: scan.id,
-  transformationTypeId: tipoId,
-  itemName: producto.nombre,
-  imageBase64: imagen.base64,
-  productId: producto.id,
-  condition: condicion,
-})
+        scanId: scan.id,
+        transformationTypeId: tipoId,
+        itemName: producto.nombre,
+        imageBase64: imagen.base64,
+        productId: producto.id,
+        condition: condicion,
+      })
 
-      // Corregido: Agregada la condición al Builder
       const builderRes = new RecomendacionResultadoBuilder()
         .withProducto(producto.id, producto.nombre)
-        .withCondicion(condicion) 
+        .withCondicion(condicion)
         .withEstrategia("AI_LOCAL", "IA Local Llava")
-        .withRecomendaciones(response.recommendations || [])
+        .withRecomendaciones(
+          (response.recommendations || []).filter(
+            (rec: any, idx: number, arr: any[]) =>
+              arr.findIndex(r => r.description === rec.description) === idx
+          )
+        )
         .build()
 
       setResultado(builderRes)
+      setScanResultId(response.id)
       setProgreso(100)
       setProgresoMsg("Completado")
     } catch (e: any) {
@@ -141,140 +163,205 @@ export function RecomendacionesTab({ productos }: { productos: any[] }) {
     }
   }
 
-  return (
-    <div className="grid lg:grid-cols-2 gap-8 animate-in fade-in duration-700">
-      
-      {/* COLUMNA IZQUIERDA: FORMULARIO */}
-      <div className="space-y-6">
-        <section className={`${THEME.bgCard} border ${THEME.border} rounded-3xl p-6 shadow-2xl space-y-6`}>
-          <div className="flex items-center gap-3 border-b border-white/5 pb-4">
-            <div className={`p-2 rounded-lg ${THEME.accentBg}`}>
-              <Wand2 className={`h-5 w-5 ${THEME.accent}`} />
-            </div>
-            <h3 className="text-lg font-bold text-white italic">Configuración</h3>
-          </div>
+  // --- Enviar Feedback ---
+const enviarFeedback = async () => {
+  if (!resultado) return
+  if (rating === 0) {
+    setError("Selecciona una calificación")
+    return
+  }
 
-          {/* DROPZONE */}
-          <div onClick={() => fileRef.current?.click()} className={`relative group border-2 border-dashed ${THEME.border} rounded-2xl p-6 transition-all cursor-pointer hover:border-[#00FF66]/50 bg-black/20`}>
-            {imagen ? (
-              <div className="relative aspect-video rounded-xl overflow-hidden shadow-2xl">
-                <img src={imagen.preview} className="object-cover w-full h-full" alt="Preview" />
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <RefreshCw className="text-white h-8 w-8" />
+  try {
+    setSendingFeedback(true)
+
+    await apiFeedbackCreate({
+      resultId: scanResultId ?? crypto.randomUUID(),
+      rating,
+      comment,
+    })
+
+    setToast("Feedback enviado correctamente")
+    setRating(0)
+    setComment("")
+  } catch (e) {
+    console.error(e)
+    setError("No se pudo enviar el feedback")
+  } finally {
+    setSendingFeedback(false)
+  }
+}
+
+  return (
+    <>
+      {/* TOAST — se renderiza fuera del grid para flotar sobre todo */}
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+
+      <div className="grid lg:grid-cols-2 gap-8 animate-in fade-in duration-700">
+
+        {/* COLUMNA IZQUIERDA: FORMULARIO */}
+        <div className="space-y-6">
+          <section className={`${THEME.bgCard} border ${THEME.border} rounded-3xl p-6 shadow-2xl space-y-6`}>
+            <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+              <div className={`p-2 rounded-lg ${THEME.accentBg}`}>
+                <Wand2 className={`h-5 w-5 ${THEME.accent}`} />
+              </div>
+              <h3 className="text-lg font-bold text-white italic">Configuración</h3>
+            </div>
+
+            {/* DROPZONE */}
+            <div onClick={() => fileRef.current?.click()} className={`relative group border-2 border-dashed ${THEME.border} rounded-2xl p-6 transition-all cursor-pointer hover:border-[#00FF66]/50 bg-black/20`}>
+              {imagen ? (
+                <div className="relative aspect-video rounded-xl overflow-hidden shadow-2xl">
+                  <img src={imagen.preview} className="object-cover w-full h-full" alt="Preview" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <RefreshCw className="text-white h-8 w-8" />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center py-6">
+                  <Upload className="text-slate-500 h-8 w-8 mb-3" />
+                  <p className="text-sm font-bold text-slate-300">Subir fotografía</p>
+                  <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest italic">Análisis Visual Requerido</p>
+                </div>
+              )}
+              <input type="file" ref={fileRef} className="hidden" onChange={e => handleImagen(e.target.files?.[0])} />
+            </div>
+
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Producto</label>
+                <select value={productoId} onChange={e => setProductoId(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-[#00FF66] outline-none">
+                  <option value="">Selecciona un producto...</option>
+                  {productos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Condición</label>
+                <div className="flex flex-wrap gap-2">
+                  {CONDICION_TAGS.map(c => (
+                    <button key={c} onClick={() => setCondicion(c)} className={`px-4 py-2 rounded-xl text-[10px] font-black border transition-all uppercase ${condicion === c ? "bg-[#00FF66] text-black border-[#00FF66]" : "bg-white/5 border-white/10 text-slate-400"}`}>
+                      {c}
+                    </button>
+                  ))}
                 </div>
               </div>
-            ) : (
-              <div className="flex flex-col items-center py-6">
-                <Upload className="text-slate-500 h-8 w-8 mb-3" />
-                <p className="text-sm font-bold text-slate-300">Subir fotografía</p>
-                <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest italic">Análisis Visual Requerido</p>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Estrategia Principal</label>
+                <div className="flex flex-wrap gap-2">
+                  {tipos.map(t => (
+                    <button key={t.id} onClick={() => setTipoId(t.id)} className={`px-4 py-2 rounded-xl text-[10px] font-black border transition-all uppercase ${tipoId === t.id ? "bg-[#00FF66] text-black border-[#00FF66]" : "bg-white/5 border-white/10 text-slate-400"}`}>
+                      {(t.label || t.strategyKey).replace('Strategy', '')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <Button onClick={generarInnovacion} disabled={loading || !productoId || !imagen} className="w-full h-14 bg-[#00FF66] hover:bg-[#00D154] text-black font-black rounded-2xl shadow-[0_10px_30px_rgba(0,255,102,0.2)]">
+              {loading ? <Loader2 className="animate-spin mr-2" /> : <Sparkles className="mr-2 h-5 w-5" />}
+              {loading ? "IA ANALIZANDO..." : "GENERAR RECOMENDACIÓN IA"}
+            </Button>
+
+            {loading && (
+              <div className="space-y-3">
+                <div className="flex justify-between text-[10px] font-black text-[#00FF66] uppercase tracking-widest">
+                  <span>{progresoMsg}</span>
+                  <span>{progreso}%</span>
+                </div>
+                <Progress value={progreso} className="h-1 bg-white/5" />
               </div>
             )}
-            <input type="file" ref={fileRef} className="hidden" onChange={e => handleImagen(e.target.files?.[0])} />
-          </div>
 
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Producto</label>
-              <select value={productoId} onChange={e => setProductoId(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-[#00FF66] outline-none">
-                <option value="">Selecciona un producto...</option>
-                {productos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Condición</label>
-              <div className="flex flex-wrap gap-2">
-                {CONDICION_TAGS.map(c => (
-                  <button key={c} onClick={() => setCondicion(c)} className={`px-4 py-2 rounded-xl text-[10px] font-black border transition-all uppercase ${condicion === c ? "bg-[#00FF66] text-black border-[#00FF66]" : "bg-white/5 border-white/10 text-slate-400"}`}>
-                    {c}
-                  </button>
-                ))}
+            {error && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                <AlertCircle size={14} />
+                {error}
               </div>
-            </div>
+            )}
+          </section>
+        </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Estrategia Principal</label>
-              <div className="flex flex-wrap gap-2">
-                {tipos.map(t => (
-                  <button key={t.id} onClick={() => setTipoId(t.id)} className={`px-4 py-2 rounded-xl text-[10px] font-black border transition-all uppercase ${tipoId === t.id ? "bg-[#00FF66] text-black border-[#00FF66]" : "bg-white/5 border-white/10 text-slate-400"}`}>
-                    {(t.label || t.strategyKey).replace('Strategy', '')}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <Button onClick={generarInnovacion} disabled={loading || !productoId || !imagen} className="w-full h-14 bg-[#00FF66] hover:bg-[#00D154] text-black font-black rounded-2xl shadow-[0_10px_30px_rgba(0,255,102,0.2)]">
-            {loading ? <Loader2 className="animate-spin mr-2" /> : <Sparkles className="mr-2 h-5 w-5" />}
-            {loading ? "IA ANALIZANDO..." : "GENERAR RECOMENDACIÓN IA"}
-          </Button>
-
-          {loading && (
-            <div className="space-y-3">
-              <div className="flex justify-between text-[10px] font-black text-[#00FF66] uppercase tracking-widest">
-                <span>{progresoMsg}</span>
-                <span>{progreso}%</span>
-              </div>
-              <Progress value={progreso} className="h-1 bg-white/5" />
+        {/* COLUMNA DERECHA: RESULTADOS */}
+        <div className="space-y-6">
+          {!resultado && !loading && (
+            <div className="h-full min-h-[450px] border-2 border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center text-slate-600 bg-black/10">
+              <Sparkles className="h-12 w-12 mb-4 opacity-5" />
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-20 text-center">Esperando Análisis</p>
             </div>
           )}
 
-          {error && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
-              <AlertCircle size={14} />
-              {error}
+          {loading && !resultado && (
+            <div className="h-full min-h-[450px] flex flex-col items-center justify-center space-y-6 bg-black/20 rounded-3xl border border-white/5 shadow-inner">
+              <div className="relative">
+                <div className="h-24 w-24 border-4 border-[#00FF66]/10 border-t-[#00FF66] rounded-full animate-spin" />
+                <Sparkles className="absolute inset-0 m-auto h-8 w-8 text-[#00FF66] animate-pulse" />
+              </div>
+              <p className="text-[#00FF66] font-mono text-[10px] tracking-[0.4em] uppercase animate-pulse">Neural Engine Active</p>
             </div>
           )}
-        </section>
-      </div>
 
-      {/* COLUMNA DERECHA: RESULTADOS */}
-      <div className="space-y-6">
-        {!resultado && !loading && (
-          <div className="h-full min-h-[450px] border-2 border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center text-slate-600 bg-black/10">
-            <Sparkles className="h-12 w-12 mb-4 opacity-5" />
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-20 text-center">Esperando Análisis</p>
-          </div>
-        )}
-
-        {loading && !resultado && (
-          <div className="h-full min-h-[450px] flex flex-col items-center justify-center space-y-6 bg-black/20 rounded-3xl border border-white/5 shadow-inner">
-             <div className="relative">
-              <div className="h-24 w-24 border-4 border-[#00FF66]/10 border-t-[#00FF66] rounded-full animate-spin" />
-              <Sparkles className="absolute inset-0 m-auto h-8 w-8 text-[#00FF66] animate-pulse" />
-            </div>
-            <p className="text-[#00FF66] font-mono text-[10px] tracking-[0.4em] uppercase animate-pulse">Neural Engine Active</p>
-          </div>
-        )}
-
-        {resultado && (
-          <div className="space-y-4 animate-in fade-in zoom-in-95 duration-500">
-            <div className="flex items-center justify-between mb-4">
-               <div className="flex items-center gap-2">
-                <CheckCircle2 className="text-[#00FF66] h-5 w-5" />
-                <h3 className="text-white font-black italic uppercase tracking-tighter text-lg">Resultados Obtenidos</h3>
+          {resultado && (
+            <div className="space-y-4 animate-in fade-in zoom-in-95 duration-500">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="text-[#00FF66] h-5 w-5" />
+                  <h3 className="text-white font-black italic uppercase tracking-tighter text-lg">Resultados Obtenidos</h3>
+                </div>
+                <Badge variant="outline" className="border-[#00FF66]/20 text-[#00FF66] font-mono text-[10px]">IA LOCAL</Badge>
               </div>
-              <Badge variant="outline" className="border-[#00FF66]/20 text-[#00FF66] font-mono text-[10px]">IA LOCAL</Badge>
-            </div>
 
-            {resultado.recomendaciones?.map((rec: any, idx: number) => (
-              <ResultCard key={idx} title={rec.title} desc={rec.description} color={idx === 0 ? "emerald" : "blue"} />
-            ))}
-            
-            {/* BOTÓN DE LIMPIEZA INTEGRADO */}
-            <Button 
-              variant="ghost" 
-              onClick={nuevaConsulta} 
-              className="w-full text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] hover:text-[#00FF66] hover:bg-[#00FF66]/5 mt-4 py-8 rounded-2xl border border-dashed border-white/5"
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Limpiar y realizar nuevo análisis
-            </Button>
-          </div>
-        )}
+              {resultado.recomendaciones?.map((rec: any, idx: number) => (
+                <ResultCard key={idx} title={rec.title} desc={rec.description} color={idx === 0 ? "emerald" : "blue"} />
+              ))}
+
+              <div className="bg-black/20 border border-white/10 rounded-3xl p-6 space-y-4">
+                <h4 className="text-white font-black uppercase tracking-[0.2em] text-sm">
+                  Evaluar recomendación
+                </h4>
+
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      onClick={() => setRating(star)}
+                      className={`text-3xl transition-all ${rating >= star ? "text-yellow-400" : "text-slate-600"}`}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Escribe tu opinión..."
+                  className="w-full min-h-[120px] bg-black/40 border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-[#00FF66]"
+                />
+
+                <Button
+                  onClick={enviarFeedback}
+                  disabled={sendingFeedback}
+                  className="w-full bg-[#00FF66] hover:bg-[#00D154] text-black font-black rounded-2xl"
+                >
+                  {sendingFeedback ? "Enviando..." : "Enviar Feedback"}
+                </Button>
+              </div>
+
+              <Button
+                variant="ghost"
+                onClick={nuevaConsulta}
+                className="w-full text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] hover:text-[#00FF66] hover:bg-[#00FF66]/5 mt-4 py-8 rounded-2xl border border-dashed border-white/5"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Limpiar y realizar nuevo análisis
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 

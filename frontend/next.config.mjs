@@ -6,6 +6,7 @@ config({ path: resolve(process.cwd(), '../.env') })
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: false, 
   typescript: { ignoreBuildErrors: true },
   images: { unoptimized: true },
   env: {

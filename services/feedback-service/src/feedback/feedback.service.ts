@@ -11,28 +11,35 @@ export class FeedbackService {
   }
 
   async create(dto: CreateFeedbackDto) {
-    const { data, error } = await this.db.from('ideas').insert({
-      titulo:      `Feedback ${dto.rating}/5`,
-      descripcion: dto.comment ?? `Rating: ${dto.rating}`,
-      categoria:   'feedback',
-      producto_id: dto.resultId,
+    const { data, error } = await this.db.from('feedback').insert({
+      recomendacion_id: dto.resultId,
+      rating:           dto.rating,
+      comentario:       dto.comment ?? '',
+      user_id:          dto.userId ?? null,
     }).select('*').single();
     if (error) throw new Error(error.message);
-    return { ...data, resultId: dto.resultId, rating: dto.rating, comment: dto.comment };
+    return {
+      id:        data.id,
+      resultId:  data.recomendacion_id,
+      rating:    data.rating,
+      comment:   data.comentario,
+      createdAt: data.created_at,
+    };
   }
 
   async findAll(minRating?: number, resultId?: string) {
-    let q = this.db.from('ideas').select('*').eq('categoria', 'feedback')
+    let q = this.db.from('feedback').select('*')
       .order('created_at', { ascending: false });
-    if (resultId) q = q.eq('producto_id', resultId);
+    if (resultId) q = q.eq('recomendacion_id', resultId);
     const { data, error } = await q;
     if (error) throw new Error(error.message);
 
     const rows = (data ?? []).map((r: any) => ({
-      ...r,
-      resultId: r.producto_id,
-      rating:   parseInt(r.titulo?.match(/\d+/)?.[0] ?? '3'),
-      comment:  r.descripcion,
+      id:        r.id,
+      resultId:  r.recomendacion_id,
+      rating:    r.rating,
+      comment:   r.comentario,
+      createdAt: r.created_at,
     }));
 
     const filtered = minRating ? rows.filter((r: any) => r.rating >= minRating) : rows;
