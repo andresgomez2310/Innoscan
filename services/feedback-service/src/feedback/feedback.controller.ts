@@ -9,11 +9,11 @@ export class FeedbackController {
 
   @MessagePattern('feedback.create')
   create(@Payload() dto: CreateFeedbackDto) {
-    return this.service.create(dto);
+    return this.service.create(dto,dto.userId!);
   }
 
   @MessagePattern('feedback.findAll')
-  findAll(@Payload() payload: { minRating?: number; resultId?: string }) {
-    return this.service.findAll(payload?.minRating, payload?.resultId);
-  }
+findAll(@Payload() payload: { minRating?: number; resultId?: string; userId?: string }) {
+  return this.service.findAll(payload?.minRating, payload?.resultId, payload?.userId);
+}
 }

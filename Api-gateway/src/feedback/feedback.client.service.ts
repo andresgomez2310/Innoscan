@@ -10,10 +10,9 @@ export class FeedbackClientService {
     return firstValueFrom(this.client.send('feedback.create', dto));
   }
 
-  findAll(minRating?: number, resultId?: string) {
-    return firstValueFrom(this.client.send('feedback.findAll', { minRating, resultId }));
-  }
-
+findAll(minRating?: number, resultId?: string, userId?: string) {
+  return firstValueFrom(this.client.send('feedback.findAll', { minRating, resultId, userId }));
+}
   findAllIdeas(estado?: string) {
     return firstValueFrom(this.client.send('ideas.findAll', { estado }));
   }

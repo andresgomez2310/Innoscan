@@ -15,10 +15,11 @@ export class FeedbackController {
   }
 
   @Get()
-  findAll(
-    @Query('minRating', new DefaultValuePipe(0), ParseIntPipe) minRating: number,
-    @Query('resultId') resultId?: string,
-  ) {
-    return this.service.findAll(minRating || undefined, resultId);
-  }
+findAll(
+  @Query('minRating', new DefaultValuePipe(0), ParseIntPipe) minRating: number,
+  @Query('resultId') resultId: string | undefined,
+  @Req() req: any,   // 👈 agregar esto
+) {
+  return this.service.findAll(minRating || undefined, resultId, req.user.id);  // 👈 pasar userId
+}
 }

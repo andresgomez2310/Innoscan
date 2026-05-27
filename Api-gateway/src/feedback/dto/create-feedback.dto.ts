@@ -5,4 +5,5 @@ export class CreateFeedbackDto {
   @IsUUID()   resultId: string;
   @IsInt() @Min(1) @Max(5) rating: number;
   @IsOptional() @IsString() comment?: string;
+  @IsOptional() @IsString() userId?: string;
 }
