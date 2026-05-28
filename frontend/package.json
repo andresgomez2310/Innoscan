@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "build": "next build",
-  "dev": "next dev -p 3000 -H 0.0.0.0",
-  "lint": "eslint .",
-  "start": "next start -p 3000 -H 0.0.0.0"
-},
+    "build": "next build",
+    "dev": "next dev -p 3000 -H 0.0.0.0",
+    "lint": "eslint .",
+    "start": "next start -p 3000 -H 0.0.0.0"
+  },
   "dependencies": {
+    "@google/model-viewer": "^4.2.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
@@ -45,6 +46,7 @@
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
+    "dotenv": "^16.4.5",
     "embla-carousel-react": "8.5.1",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
@@ -60,8 +62,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
-    "zod": "3.25.76",
-    "dotenv": "^16.4.5"
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",

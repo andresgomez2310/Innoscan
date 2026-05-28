@@ -1,45 +1,88 @@
-export type MaterialAR = {
-  nombre: string
-  archivo: string
-  escala?: string
+/**
+ * Sistema de detección de materiales para el visor AR.
+ * Lee la respuesta de la IA y determina qué modelo 3D mostrar.
+ */
+
+export type Material =
+  | "madera"
+  | "plastico"
+  | "metal"
+  | "carton"
+  | "vidrio"
+  | "electronico"
+  | "tela"
+  | "organico"
+  | "default"
+
+type MaterialKey = Exclude<Material, "default">
+
+const KEYWORDS_POR_MATERIAL: Record<MaterialKey, string[]> = {
+  electronico: [
+    "electronico", "electronica", "electronicos", "electronicas",
+    "circuito", "bateria", "pila", "chip",
+    "dispositivo electronico", "componente electronico",
+  ],
+  vidrio: [
+    "vidrio", "cristal", "cristales", "vidrios",
+  ],
+  metal: [
+    "metal", "metalico", "metalica", "metales",
+    "aluminio", "acero", "hierro", "lata", "estanio", "cobre",
+  ],
+  carton: [
+    "carton", "cartones", "cartulina",
+    "papel", "papeles", "celulosa",
+  ],
+  madera: [
+    "madera", "maderas",
+    "bambu", "corcho",
+  ],
+  tela: [
+    "tela", "telas", "tejido", "textil", "fibra",
+    "algodon", "lana", "poliester",
+  ],
+  organico: [
+    "organico", "organica", "organicos", "organicas",
+    "biodegradable", "compost", "compostable",
+    "alimento", "comida", "fruta", "verdura",
+  ],
+  plastico: [
+    "plastico", "plastica", "plasticos", "plasticas",
+    "pet", "polietileno", "polipropileno", "pvc", "polimero",
+  ],
 }
 
-export const MATERIALES_AR: Record<string, MaterialAR> = {
-  madera:      { nombre: "Madera",      archivo: "/models/madera.glb",      escala: "1 1 1" },
-  plastico:    { nombre: "Plástico",    archivo: "/models/plastico.glb",    escala: "1 1 1" },
-  metal:       { nombre: "Metal",       archivo: "/models/metal.glb",       escala: "1 1 1" },
-  carton:      { nombre: "Cartón",      archivo: "/models/carton.glb",      escala: "1 1 1" },
-  vidrio:      { nombre: "Vidrio",      archivo: "/models/vidrio.glb",      escala: "1 1 1" },
-  electronico: { nombre: "Electrónico", archivo: "/models/electronico.glb", escala: "1 1 1" },
-  tela:        { nombre: "Tela",        archivo: "/models/tela.glb",        escala: "1 1 1" },
-  organico:    { nombre: "Orgánico",    archivo: "/models/organico.glb",    escala: "1 1 1" },
+function normalizar(texto: string): string {
+  return texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
-export const MATERIAL_GENERICO: MaterialAR = {
-  nombre: "Genérico",
-  archivo: "/models/generico.glb",
-  escala: "1 1 1",
-}
-
-export function detectarMaterial(respuestaOllama: string): MaterialAR {
-  const texto = respuestaOllama.toLowerCase()
-
-  const sinonimos: Record<string, string[]> = {
-    madera:      ["madera", "madero", "madera natural"],
-    plastico:    ["plástico", "plastico", "pvc", "polietileno"],
-    metal:       ["metal", "metálico", "acero", "aluminio", "hierro", "cobre"],
-    carton:      ["cartón", "carton", "papel", "cardboard"],
-    vidrio:      ["vidrio", "cristal", "glass"],
-    electronico: ["electrónico", "electronico", "circuito", "cable", "digital"],
-    tela:        ["tela", "telas", "tejido", "textil", "ropa", "algodón"],
-    organico:    ["orgánico", "organico", "natural", "maíz", "fruta", "vegetal"],
+export function detectarMaterial(texto: string | null | undefined): Material {
+  if (!texto || typeof texto !== "string") {
+    return "default"
   }
 
-  for (const [clave, palabras] of Object.entries(sinonimos)) {
-    if (palabras.some(p => texto.includes(p))) {
-      return MATERIALES_AR[clave]
+  const textoNormalizado = normalizar(texto)
+  const entradas = Object.entries(KEYWORDS_POR_MATERIAL) as [MaterialKey, string[]][]
+
+  for (const [material, keywords] of entradas) {
+    for (const keyword of keywords) {
+      const regex = new RegExp(`(^|\\s)${keyword}(\\s|$)`)
+      if (regex.test(textoNormalizado)) {
+        return material
+      }
     }
   }
 
-  return MATERIAL_GENERICO
+  return "default"
+}
+
+export function rutaModelo(material: Material): string {
+  if (material === "default") return "/models/generico.glb"
+  return `/models/${material}.glb`
 }

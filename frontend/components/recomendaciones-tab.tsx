@@ -1,3 +1,5 @@
+// aqui empece a editar cod del que ya tenemos, añadiendo el import { ARViewer } from "@/components/ar-viewer" al final de los imports, EN LA 202 POR AH9 TAMB en la div name class grill grill
+
 "use client"
 
 import React, { useState, useRef, useEffect } from "react"
@@ -11,6 +13,8 @@ import { RecomendacionResultadoBuilder } from "@/lib/patterns/builder"
 import { useScanObserver } from "@/lib/patterns/observer"
 import { apiTransformTypes, apiEscaneoCreate, apiRecommendGenerate, apiFeedbackCreate } from "@/lib/api/client"
 import { useUser } from "@/hooks/use-user"
+import { ARViewer } from "@/components/ar-viewer"
+import { detectarMaterial } from "@/lib/materiales"
 
 const THEME = {
   bgCard: "bg-[#0D1117]",
@@ -317,8 +321,29 @@ const enviarFeedback = async () => {
                   <CheckCircle2 className="text-[#00FF66] h-5 w-5" />
                   <h3 className="text-white font-black italic uppercase tracking-tighter text-lg">Resultados Obtenidos</h3>
                 </div>
+              
                 <Badge variant="outline" className="border-[#00FF66]/20 text-[#00FF66] font-mono text-[10px]">IA LOCAL</Badge>
               </div>
+               {/* VISOR AR — Aparece con el resultado, detecta material automáticamente */}
+            {(() => {
+              const textoCompleto = (resultado.recomendaciones || [])
+                .map((r: any) => `${r.title ?? ""} ${r.description ?? ""}`)
+                .join(" ")
+              const material = detectarMaterial(textoCompleto)
+              return (
+                <div className="rounded-3xl overflow-hidden border border-white/10 bg-black/20 backdrop-blur-md">
+                  <ARViewer material={material} />
+                  <div className="px-4 py-2 border-t border-white/5 flex items-center justify-between">
+                    <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">
+                      Visualización AR
+                    </p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#00FF66]">
+                      📱 Toca el ícono para ver en tu espacio
+                    </p>
+                  </div>
+                </div>
+              )
+            })()}
 
               {resultado.recomendaciones?.map((rec: any, idx: number) => (
                 <ResultCard key={idx} title={rec.title} desc={rec.description} color={idx === 0 ? "emerald" : "blue"} />
