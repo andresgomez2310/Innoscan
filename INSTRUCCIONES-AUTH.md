@@ -1,6 +1,6 @@
-Auth conectada en todo el proyecto:
+# Auth conectada en todo el proyecto:
 
-1. Configurar credenciales de Supabase (obligatorio)
+1. Configurar credenciales de Supabase
 Frontend
 La carpeta frontend contiene los archivos .tsx que conforman las interfaces de usuario.
 
