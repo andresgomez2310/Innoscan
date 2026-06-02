@@ -1,34 +1,31 @@
-# Auth conectada en todo el proyecto
+Auth conectada en todo el proyecto:
 
-## 1. Configurar credenciales de Supabase (OBLIGATORIO)
+1. Configurar credenciales de Supabase (obligatorio)
+Frontend
+La carpeta frontend contiene los archivos .tsx que conforman las interfaces de usuario.
 
-### Frontend
-Edita `frontend/.env.local` y rellena:
-```
-NEXT_PUBLIC_SUPABASE_URL=https://TU-PROYECTO.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-anon-key
-NEXT_PUBLIC_API_URL=http://localhost:3001
-```
-(Las claves están en https://supabase.com/dashboard/project/_/settings/api)
+API Gateway
+Se encarga de la comunicación con RabbitMQ y los microservicios.
 
-### API Gateway
-Copia `Api-gateway/.env.example` a `Api-gateway/.env` y rellena `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `DATABASE_URL`.
+2. Base de datos
+Ejecuta supabase-migration.sql en el SQL Editor de Supabase. Este script crea la tabla profiles y un trigger que la rellena automáticamente cuando un usuario se registra.
 
-## 2. Base de datos
-Ejecuta `supabase-migration.sql` en el SQL Editor de Supabase. Crea la tabla `profiles` y un trigger que la rellena automáticamente al registrarse un usuario.
+3. Lo qué está conectado:
+middleware.ts: protege todas las rutas. Si no hay sesión activa, redirige a /login. Ya no falla si faltan las variables de entorno (muestra un aviso en su lugar).
+/login y /register: autenticación mediante Supabase Auth.
+Hook useUser() (frontend/hooks/use-user.ts): disponible en cualquier componente cliente.
+Dashboard: muestra el email del usuario y un botón para cerrar sesión en el header.
+Cliente API (frontend/lib/api/client.ts): adjunta automáticamente el header Authorization: Bearer <token> en todas las peticiones.
+API Gateway: todos los controllers (productos, ideas, scans, recommendations, feedback, catalog) están protegidos con @UseGuards(SupabaseAuthGuard). Las peticiones sin token válido reciben un 401.
+req.user queda disponible dentro de cada controller protegido (con id, email, etc.) para filtrar por usuario en los servicios si es necesario.
 
-## 3. Qué ya está conectado
 
-- **middleware.ts**: protege todas las rutas. Si no hay sesión → redirige a `/login`. Ya NO crashea si faltan las env vars (muestra warning).
-- **`/login` y `/register`**: usan Supabase Auth.
-- **`useUser()` hook** (`frontend/hooks/use-user.ts`): disponible en cualquier componente cliente.
-- **Dashboard**: muestra el email del usuario y un botón "Cerrar sesión" en el header.
-- **API client** (`frontend/lib/api/client.ts`): envía `Authorization: Bearer <token>` en todas las llamadas.
-- **API Gateway**: TODOS los controllers (`productos`, `ideas`, `scans`, `recommendations`, `feedback`, `catalog`) están protegidos con `@UseGuards(SupabaseAuthGuard)`. Las requests sin token válido reciben 401.
-- `req.user` queda disponible dentro de cada controller protegido (id, email, etc.) para filtrar por usuario en los services si lo necesitas.
-
-## 4. Levantar
-```
+4. Levantar el proyecto
+# Frontend
 cd frontend && npm install && npm run dev
+
+# API Gateway
 cd Api-gateway && npm install && npm run start:dev
-```
+o con Docker:
+bash#
+docker-compose up

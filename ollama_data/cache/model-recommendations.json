@@ -1,6 +1,13 @@
 {
   "recommendations": [
     {
+      "model": "minimax-m3:cloud",
+      "description": "State-of-the-art coding \u0026 agent capabilities with multimodal reasoning and support for up to 1M context",
+      "context_length": 524288,
+      "max_output_tokens": 131072,
+      "required_plan": "free"
+    },
+    {
       "model": "kimi-k2.6:cloud",
       "description": "State-of-the-art coding, long-horizon execution, and multimodal agent swarm capability",
       "context_length": 262144,
