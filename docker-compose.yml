@@ -90,6 +90,11 @@ services:
       - api-gateway
     networks:
       - innoscan-network
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --url http://api-gateway:3001
+    networks:
+      - innoscan-network
 
 networks:
   innoscan-network:
